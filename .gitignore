@@ -1,0 +1,15 @@
+node_modules/
+.next/
+dist/
+*.mcpb
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+data/
+.e2e/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store

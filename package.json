@@ -1,0 +1,25 @@
+{
+  "name": "reslabs-reup-demo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "dev:store": "pnpm --filter @reup/store dev",
+    "mock": "tsx scripts/mock-session.ts",
+    "reconcile": "tsx scripts/reconcile.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2",
+    "@types/node": "^24",
+    "tsx": "^4",
+    "typescript": "^5.9"
+  }
+}

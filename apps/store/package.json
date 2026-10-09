@@ -1,0 +1,30 @@
+{
+  "name": "@reup/store",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc -p .",
+    "test": "node --import tsx --test 'lib/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@reup/chain-proof": "workspace:*",
+    "better-sqlite3": "^13",
+    "mppx": "0.13.4",
+    "next": "^16.2.6",
+    "react": "^19",
+    "react-dom": "^19",
+    "viem": "2.57.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/node": "^24",
+    "tsx": "^4",
+    "typescript": "^5.9"
+  }
+}

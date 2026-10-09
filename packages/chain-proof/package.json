@@ -1,0 +1,21 @@
+{
+  "name": "@reup/chain-proof",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --import tsx --test 'src/**/*.test.ts'"
+  },
+  "dependencies": {
+    "viem": "2.57.4"
+  },
+  "devDependencies": {
+    "tsx": "^4",
+    "typescript": "^5.9",
+    "@types/node": "^24"
+  }
+}
