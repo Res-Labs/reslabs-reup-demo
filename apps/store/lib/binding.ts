@@ -139,13 +139,16 @@ export async function bindCredential(
   if (!isAddressEqual(to, terms.recipient) || value !== terms.amount)
     return fail("transfer_mismatch");
 
-  // mppx's Attribution.verifyChallengeBinding is not exported; these are its three byte checks:
-  // bytes 0-3 keccak256("mpp")[0:4], byte 4 version 0x01, bytes 25-31 keccak256(challenge.id)[0:7].
+  // mppx's Attribution memo checks are not exported. These mirror what mppx verifies before
+  // broadcast (verifyServer + verifyChallengeBinding), so no attempt is reserved for a memo
+  // mppx would refuse: bytes 0-3 keccak256("mpp")[0:4], byte 4 version 0x01,
+  // bytes 5-14 keccak256(realm)[0:10], bytes 25-31 keccak256(challenge.id)[0:7].
   const memoHex = memo.toLowerCase();
   if (
     memoHex.length !== 66 ||
     memoHex.slice(2, 10) !== MPP_MEMO_TAG ||
     memoHex.slice(10, 12) !== "01" ||
+    memoHex.slice(12, 32) !== keccak256(stringToBytes(challenge.realm)).slice(2, 22) ||
     memoHex.slice(52, 66) !== keccak256(stringToBytes(challenge.id)).slice(2, 16)
   ) {
     return fail("memo_unbound");

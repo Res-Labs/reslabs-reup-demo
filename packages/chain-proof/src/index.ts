@@ -12,9 +12,9 @@ export type { Address, Attempt, Hex, Resolution } from "./resolve";
 export const PATH_USD: Address = "0x20c0000000000000000000000000000000000000";
 export const MODERATO_CHAIN_ID = 42431;
 
-// The usual dead-proof range is ~75 blocks and fits one batch. A late reconciler run
-// walks a longer range in windows instead of one unbounded batch.
-const BLOCKS_PER_BATCH = 100n;
+// The public Moderato RPC rejects JSON-RPC batches longer than 12 calls with HTTP 413
+// (measured Oct 2026), so the dead-proof range is walked in windows below that cap.
+const BLOCKS_PER_BATCH = 10n;
 
 export interface ChainProofConfig {
   rpcUrl: string;

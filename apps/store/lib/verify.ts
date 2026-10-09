@@ -50,6 +50,7 @@ export async function verify(req: Request): Promise<Response> {
       price: config.demoPrice,
       payer: verification.payer,
       tx_hash: verification.txHash,
+      created_at: verification.createdAt,
     }),
   );
 }

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { config } from "../lib/config";
 
 export const runtime = "nodejs";
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default function ProductPage() {
   return (
     <article className="product">
-      <img
+      <Image
         className="product-render"
         src="/product.svg"
         alt="Product vial"

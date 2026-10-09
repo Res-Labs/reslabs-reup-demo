@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/index.js --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
-    "pack": "pnpm build && mcpb pack . reslabs-reup.mcpb",
+    "extension": "pnpm build && mcpb pack . reslabs-reup.mcpb",
     "typecheck": "tsc -p .",
     "test": "node --import tsx --test 'src/**/*.test.ts'"
   },

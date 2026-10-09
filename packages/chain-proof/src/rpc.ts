@@ -1,8 +1,13 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { hexToBigInt, hexToNumber, isAddress, isHex, numberToHex } from "viem";
 import type { Address, Block, Hex, Log, Receipt } from "./resolve";
 
 // Same default as viem's HTTP transport.
 const TIMEOUT_MS = 10_000;
+// The public Moderato RPC answers short bursts with HTTP 429. Back off and retry a
+// few times so a dead-proof scan of several batches can finish in one pass.
+const RATE_LIMIT_RETRIES = 4;
+const RATE_LIMIT_BASE_DELAY_MS = 500;
 
 export interface RpcCall {
   method: string;
@@ -14,12 +19,12 @@ export type RpcBatch = (calls: readonly RpcCall[]) => Promise<unknown[]>;
 export function createRpcBatch(url: string, fetchFn: typeof fetch): RpcBatch {
   return async (calls) => {
     const requests = calls.map((call, id) => ({ jsonrpc: "2.0", id, ...call }));
-    const response = await fetchFn(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(requests),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    const body = JSON.stringify(requests);
+    let response = await post(url, body, fetchFn);
+    for (let retry = 0; response.status === 429 && retry < RATE_LIMIT_RETRIES; retry++) {
+      await sleep(RATE_LIMIT_BASE_DELAY_MS * 2 ** retry);
+      response = await post(url, body, fetchFn);
+    }
     if (!response.ok) throw new Error(`RPC HTTP ${response.status}`);
     const replies: unknown = await response.json();
     if (!Array.isArray(replies)) throw new Error("RPC batch response is not an array");
@@ -34,6 +39,15 @@ export function createRpcBatch(url: string, fetchFn: typeof fetch): RpcBatch {
       return results.get(id);
     });
   };
+}
+
+function post(url: string, body: string, fetchFn: typeof fetch): Promise<Response> {
+  return fetchFn(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
 }
 
 export function getBlock(number: bigint | "finalized"): RpcCall {

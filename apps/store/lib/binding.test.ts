@@ -39,6 +39,7 @@ interface Scenario {
   payload?: (signature: Hex) => unknown;
   source?: string;
   memoFor?: string;
+  memoRealm?: string;
   transfer?: {
     to?: Address;
     amount?: bigint;
@@ -61,7 +62,8 @@ async function bind(scenario: Scenario = {}) {
   const memo = concat([
     slice(keccak256(stringToBytes("mpp")), 0, 4),
     "0x01",
-    padHex("0x", { size: 20 }),
+    slice(keccak256(stringToBytes(scenario.memoRealm ?? challenge.realm)), 0, 10),
+    padHex("0x", { size: 10 }),
     slice(keccak256(stringToBytes(scenario.memoFor ?? challenge.id)), 0, 7),
   ]);
   const transfer = scenario.transfer ?? {};
@@ -176,6 +178,7 @@ describe("bindCredential", () => {
     ["a transfer of another amount", { transfer: { amount: PRICE - 1n } }, "transfer_mismatch"],
     ["a second call", { transfer: { extraCall: true } }, "transfer_mismatch"],
     ["a memo bound to another challenge", { memoFor: "another-challenge-id" }, "memo_unbound"],
+    ["a memo for another server", { memoRealm: "another-store" }, "memo_unbound"],
     ["a sequential nonce", { transfer: { nonceKey: 0n } }, "nonce_not_expiring"],
     ["a validBefore already passed", { transfer: { validBefore: NOW } }, "valid_before_window"],
     [

@@ -280,6 +280,22 @@ describe("createChainProof", () => {
     assert.deepEqual(await proof.resolveAttempt(attempt), { kind: "dead" });
   });
 
+  it("proves dead through an RPC that caps batches at 12 calls and rate-limits a burst", async () => {
+    const blocks: RpcBlock[] = [];
+    for (let n = 100; n <= 230; n++) blocks.push(rpcBlock(BigInt(n), VALID_BEFORE - 230 + n));
+    const upstream = chain(rpcBlock(260n, VALID_BEFORE + 30), null, blocks);
+    let rateLimited = false;
+    const publicRpc: typeof fetch = async (input, init) => {
+      if (JSON.parse(String(init?.body)).length > 12) return new Response("", { status: 413 });
+      if (!rateLimited) {
+        rateLimited = true;
+        return new Response("", { status: 429 });
+      }
+      return upstream(input, init);
+    };
+    assert.deepEqual(await proofOver(publicRpc).resolveAttempt(attempt), { kind: "dead" });
+  });
+
   it("returns unknown when the RPC answers with an error", async () => {
     const proof = proofOver(
       rpcServer((method) =>

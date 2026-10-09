@@ -8,6 +8,7 @@ import {
   type Resolution,
 } from "@reup/chain-proof";
 import Database from "better-sqlite3";
+import { isAddress, parseUnits } from "viem";
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -19,28 +20,25 @@ function requireEnv(name: string): string {
 }
 
 function parseAddress(name: string, value: string): Address {
-  if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
+  if (!isAddress(value, { strict: false })) {
     console.error(`reconcile: ${name} must be a 0x-prefixed 20-byte address, got "${value}"`);
     process.exit(1);
   }
   return value as Address;
 }
 
-// pathUSD has 6 decimals; parsed here to avoid a viem dependency at the repo root.
-function parseAmount6(name: string, value: string): bigint {
-  const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(value);
-  if (!match) {
-    console.error(`reconcile: ${name} must be a decimal with at most 6 places, got "${value}"`);
+function parseAmount(name: string, value: string): bigint {
+  try {
+    return parseUnits(value, 6);
+  } catch {
+    console.error(`reconcile: ${name} must be a decimal amount, got "${value}"`);
     process.exit(1);
   }
-  const whole = match[1] ?? "0";
-  const frac = (match[2] ?? "").padEnd(6, "0");
-  return BigInt(whole) * 1_000_000n + BigInt(frac);
 }
 
 const rpcUrl = requireEnv("TEMPO_RPC_URL");
 const recipient = parseAddress("MPP_RECIPIENT", requireEnv("MPP_RECIPIENT"));
-const amount = parseAmount6("DEMO_PRICE", requireEnv("DEMO_PRICE"));
+const amount = parseAmount("DEMO_PRICE", requireEnv("DEMO_PRICE"));
 // STORE_DB_PATH is shared via the root .env and is relative to the store's cwd, not the repo root.
 const dbPath = resolve("apps/store", process.env.STORE_DB_PATH?.trim() || "data/store.db");
 
@@ -98,12 +96,7 @@ for (const row of rows) {
     validBefore: row.valid_before,
     createdBlock: BigInt(row.created_block),
   };
-  let chainResult: string;
-  try {
-    chainResult = describe(await chain.resolveAttempt(attempt));
-  } catch (err) {
-    chainResult = `error: ${(err as Error).message}`;
-  }
+  const chainResult = describe(await chain.resolveAttempt(attempt));
   report.push({
     status: row.status,
     tap_id: row.tap_id,
