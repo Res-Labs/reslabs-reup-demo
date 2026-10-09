@@ -7,6 +7,7 @@ const rootEnv = path.resolve(process.cwd(), "../../.env");
 if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
 
 const nextConfig: NextConfig = {
+  distDir: process.env.STORE_DIST_DIR ?? ".next",
   transpilePackages: ["@reup/chain-proof"],
 };
 

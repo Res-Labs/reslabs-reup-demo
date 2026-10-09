@@ -14,15 +14,18 @@
     "format": "biome format --write .",
     "dev:store": "pnpm --filter @reup/store dev",
     "mock": "tsx --env-file-if-exists=.env scripts/mock-session.ts",
-    "reconcile": "tsx --env-file-if-exists=.env scripts/reconcile.ts"
+    "reconcile": "tsx --env-file-if-exists=.env scripts/reconcile.ts",
+    "e2e:happy": "pnpm --filter @reup/mcp build && tsx e2e/happy.e2e.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",
+    "@modelcontextprotocol/sdk": "^1.25",
     "@reup/chain-proof": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24",
     "better-sqlite3": "^13",
     "tsx": "^4",
-    "typescript": "^5.9"
+    "typescript": "^5.9",
+    "viem": "2.57.4"
   }
 }

@@ -112,6 +112,9 @@ importers:
       '@biomejs/biome':
         specifier: ^2
         version: 2.5.15
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.25
+        version: 1.32.1(zod@3.25.76)
       '@reup/chain-proof':
         specifier: workspace:*
         version: link:packages/chain-proof
@@ -130,6 +133,9 @@ importers:
       typescript:
         specifier: ^5.9
         version: 5.9.3
+      viem:
+        specifier: 2.57.4
+        version: 2.57.4(typescript@5.9.3)(zod@3.25.76)
 
   apps/mcp:
     dependencies:
@@ -2191,6 +2197,11 @@ snapshots:
       typescript: 5.9.3
       zod: 3.25.76
 
+  abitype@1.3.0(typescript@5.9.3)(zod@3.25.76):
+    optionalDependencies:
+      typescript: 5.9.3
+      zod: 3.25.76
+
   abitype@1.3.0(typescript@5.9.3)(zod@4.6.5):
     optionalDependencies:
       typescript: 5.9.3
@@ -2668,7 +2679,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
+      abitype: 1.3.0(typescript@5.9.3)(zod@3.25.76)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
