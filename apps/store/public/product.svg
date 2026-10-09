@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 400" width="320" height="400" role="img" aria-label="Product vial">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2531"/>
+      <stop offset="1" stop-color="#10161e"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d9ecf7" stop-opacity="0.35"/>
+      <stop offset="0.25" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#cfe3ef" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#9fb8c8" stop-opacity="0.4"/>
+    </linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5a6673"/>
+      <stop offset="0.35" stop-color="#9aa6b2"/>
+      <stop offset="1" stop-color="#46505b"/>
+    </linearGradient>
+    <linearGradient id="powder" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f8fa"/>
+      <stop offset="1" stop-color="#d7dee5"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="400" fill="url(#bg)"/>
+  <ellipse cx="160" cy="352" rx="78" ry="12" fill="#000" opacity="0.35"/>
+  <rect x="106" y="150" width="108" height="196" rx="16" fill="url(#glass)" stroke="#cfe3ef" stroke-opacity="0.6" stroke-width="2"/>
+  <path d="M110 286 H210 V330 a14 14 0 0 1 -14 14 H124 a14 14 0 0 1 -14 -14 Z" fill="url(#powder)"/>
+  <rect x="118" y="200" width="84" height="64" rx="4" fill="#f4f7fa"/>
+  <rect x="128" y="214" width="52" height="7" rx="3.5" fill="#9aa6b2"/>
+  <rect x="128" y="230" width="64" height="5" rx="2.5" fill="#c3ccd5"/>
+  <rect x="128" y="242" width="40" height="5" rx="2.5" fill="#c3ccd5"/>
+  <rect x="120" y="126" width="80" height="28" rx="4" fill="#cfd8e0" opacity="0.85"/>
+  <rect x="112" y="72" width="96" height="58" rx="8" fill="url(#cap)"/>
+  <rect x="112" y="96" width="96" height="4" fill="#3a434d" opacity="0.6"/>
+  <rect x="120" y="164" width="10" height="160" rx="5" fill="#ffffff" opacity="0.35"/>
+</svg>

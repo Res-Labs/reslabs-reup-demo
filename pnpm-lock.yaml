@@ -112,9 +112,18 @@ importers:
       '@biomejs/biome':
         specifier: ^2
         version: 2.5.15
+      '@reup/chain-proof':
+        specifier: workspace:*
+        version: link:packages/chain-proof
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
       '@types/node':
         specifier: ^24
         version: 24.19.1
+      better-sqlite3:
+        specifier: ^13
+        version: 13.0.3
       tsx:
         specifier: ^4
         version: 4.23.15

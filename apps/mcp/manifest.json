@@ -1,0 +1,63 @@
+{
+  "manifest_version": "0.2",
+  "name": "reslabs-reup",
+  "display_name": "Res Labs Re-up",
+  "version": "0.1.0",
+  "description": "Verify a Res Labs tapped product and reorder it from the Demo Store, paying over MPP on Tempo Moderato testnet from the agent's wallet.",
+  "author": {
+    "name": "Res Labs"
+  },
+  "license": "MIT",
+  "keywords": ["mpp", "tempo", "res-labs", "testnet"],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "AGENT_KEY": "${user_config.agent_key}",
+        "STORE_URL": "${user_config.store_url}",
+        "MPP_RECIPIENT": "${user_config.mpp_recipient}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "reslabs_verify_tap",
+      "description": "Pay $0.001 pathUSD to check a Res Labs 5-minute share link and read the product, vendor, vendor batch, COA and reorder price."
+    },
+    {
+      "name": "reslabs_reorder",
+      "description": "Reorder the verified product, paying the reorder price in pathUSD. Only after the user confirms product, vendor and price."
+    }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=22.12.0"
+    }
+  },
+  "user_config": {
+    "agent_key": {
+      "type": "string",
+      "title": "Agent wallet private key",
+      "description": "Private key of the agent's Tempo Moderato testnet wallet (0x followed by 64 hex characters). Testnet funds only.",
+      "required": true,
+      "sensitive": true
+    },
+    "store_url": {
+      "type": "string",
+      "title": "Demo Store URL",
+      "description": "Base URL of the Demo Store.",
+      "required": true,
+      "default": "http://localhost:3000"
+    },
+    "mpp_recipient": {
+      "type": "string",
+      "title": "Demo Store payment address",
+      "description": "The only address the agent's wallet will pay: the Demo Store's MPP recipient on Tempo Moderato.",
+      "required": true
+    }
+  }
+}

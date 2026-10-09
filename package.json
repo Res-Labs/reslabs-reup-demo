@@ -13,12 +13,15 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "dev:store": "pnpm --filter @reup/store dev",
-    "mock": "tsx scripts/mock-session.ts",
-    "reconcile": "tsx scripts/reconcile.ts"
+    "mock": "tsx --env-file-if-exists=.env scripts/mock-session.ts",
+    "reconcile": "tsx --env-file-if-exists=.env scripts/reconcile.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",
+    "@reup/chain-proof": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24",
+    "better-sqlite3": "^13",
     "tsx": "^4",
     "typescript": "^5.9"
   }
