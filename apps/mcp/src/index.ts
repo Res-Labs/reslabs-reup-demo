@@ -158,9 +158,9 @@ function reorderResult(result: StoreReply<z.infer<typeof Order>>): CallToolResul
     case "error":
       switch (result.error) {
         case "settlement_pending":
-          return reply("Payment is settling: check again in a minute; do not pay again", true);
+          return reply("Payment is settling; check again in a minute; do not pay again", true);
         case "needs_review":
-          return reply("Payment needs manual review: do not pay again", true);
+          return reply("Payment needs manual review; do not pay again", true);
         case "payment_not_settled":
           return reply(
             "The payment did not go through; you may ask the user whether to try again",

@@ -27,7 +27,6 @@ export interface Wallet {
 }
 
 export interface Keys {
-  recipient: Wallet;
   agents: Wallet[];
   mppSecretKey: string;
 }
@@ -87,8 +86,6 @@ export function toolField(text: string, label: string): string {
 export interface StackOptions {
   /** Store's Tempo RPC, e.g. a fault proxy in front of Moderato. */
   rpcUrl?: string;
-  /** Defaults to a fresh address, so balance deltas are not shared with concurrent runs. */
-  recipient?: Address;
   demoPrice?: string;
 }
 
@@ -154,8 +151,8 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
   const [mockPort, storePort] = [await freePort(), await freePort()];
   const mockUrl = `http://localhost:${mockPort}`;
   const storeUrl = `http://127.0.0.1:${storePort}`;
-  const recipient =
-    opts.recipient ?? privateKeyToAccount(`0x${randomBytes(32).toString("hex")}`).address;
+  // A fresh recipient per stack keeps balance deltas from mixing with concurrent runs.
+  const recipient = privateKeyToAccount(`0x${randomBytes(32).toString("hex")}`).address;
   const batchId = randomUUID();
   const dbPath = path.join(runDir, "store.db");
   const log = (name: string) => path.join(runDir, `${name}.log`);

@@ -201,9 +201,9 @@ pnpm --filter @reup/mcp extension
 
 The command writes `apps/mcp/reslabs-reup.mcpb`. Open the `.mcpb` file with Claude Desktop to install it. The install form asks for the agent's wallet private key, the Demo Store URL and the Demo Store payment address. The extension passes them to the server as `AGENT_KEY`, `STORE_URL` and `MPP_RECIPIENT`. `manifest.json` marks the private key as sensitive.
 
-Then set the extension's tool permissions in Claude Desktop:
+Then set the extension's tool permissions in Claude Desktop (Customize, then Connectors, then Tool permissions). Anthropic documents per-tool permissions for Desktop Extensions. This setup has not yet been exercised in Claude Desktop.
 
-| Tool | Permission | Result |
+| Tool | Permission | Intended result |
 |---|---|---|
 | `reslabs_verify_tap` | **Always allow** | The agent pays the $0.001 fee without a prompt. |
 | `reslabs_reorder` | **Needs approval** | Claude Desktop asks before every reorder. Click **Allow once** to pay. |
@@ -216,7 +216,6 @@ The suites read wallets from `.e2e/keys.json`, which is gitignored:
 
 ```json
 {
-	"recipient": { "pk": "0xPRIVATE_KEY", "address": "0xADDRESS" },
 	"agents": [
 		{ "pk": "0xPRIVATE_KEY", "address": "0xADDRESS" },
 		{ "pk": "0xPRIVATE_KEY", "address": "0xADDRESS" },
@@ -227,7 +226,7 @@ The suites read wallets from `.e2e/keys.json`, which is gitignored:
 }
 ```
 
-`pnpm e2e:happy` pays from `agents[1]`, `pnpm e2e:adversarial` from `agents[2]` and `pnpm e2e:faults` from `agents[3]`. Fund those three wallets with the faucet before you run the suites. Each suite exits non-zero if any assertion fails. `pnpm e2e` runs the three suites in that order.
+`pnpm e2e:happy` pays from `agents[1]`, `pnpm e2e:adversarial` from `agents[2]` and `pnpm e2e:faults` from `agents[3]`. `agents[0]` is not read by any suite. Fund the three suite wallets with the faucet before you run the suites. `mppSecretKey` is the store's MPP secret for every suite stack. Each suite exits non-zero if any assertion fails. `pnpm e2e` runs the three suites in that order.
 
 ### `pnpm e2e:happy`
 
