@@ -1,7 +1,14 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "files": {
-    "includes": ["**", "!**/.next", "!**/dist", "!**/node_modules", "!**/*.mcpb"]
+    "includes": [
+      "**",
+      "!**/.next",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/*.mcpb",
+      "!apps/store/components/arc"
+    ]
   },
   "formatter": {
     "indentStyle": "space",

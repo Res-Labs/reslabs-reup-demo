@@ -11,7 +11,10 @@
     "test": "node --import tsx --test 'lib/**/*.test.ts'"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.2.0",
     "@reup/chain-proof": "workspace:*",
+    "lucide-react": "^1.54.0",
+    "motion": "^14.1.0",
     "mppx": "0.13.4",
     "next": "^16.2.6",
     "pg": "^8.23.1",
