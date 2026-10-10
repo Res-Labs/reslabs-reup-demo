@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { Address } from "@reup/chain-proof";
 import { getAddress, isAddress, parseUnits } from "viem";
 
@@ -14,7 +13,9 @@ export interface Config {
   reslabsLinkOrigin: string;
   reslabsSessionUrl: string;
   tempoRpcUrl: string;
-  storeDbPath: string;
+  databaseUrl: string;
+  /** When set, `GET /api/cron/reconcile` requires `Authorization: Bearer <cronSecret>`. */
+  cronSecret: string | undefined;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,7 +24,7 @@ export function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID.test(value);
 }
 
-export function parseConfig(env: NodeJS.ProcessEnv, cwd: string): Config {
+export function parseConfig(env: NodeJS.ProcessEnv): Config {
   const invalid: string[] = [];
   const read = (name: string, valid: (value: string) => boolean): string => {
     const value = env[name]?.trim() ?? "";
@@ -43,7 +44,10 @@ export function parseConfig(env: NodeJS.ProcessEnv, cwd: string): Config {
   const reslabsLinkOrigin = read("RESLABS_LINK_ORIGIN", url);
   const reslabsSessionUrl = read("RESLABS_SESSION_URL", url);
   const tempoRpcUrl = read("TEMPO_RPC_URL", url);
-  const storeDbPath = env.STORE_DB_PATH?.trim() || "data/store.db";
+  const databaseUrl = read(
+    "DATABASE_URL",
+    (value) => URL.canParse(value) && /^postgres(ql)?:$/.test(new URL(value).protocol),
+  );
 
   if (invalid.length > 0) {
     throw new Error(`Missing or invalid store environment variables: ${invalid.join(", ")}`);
@@ -59,7 +63,8 @@ export function parseConfig(env: NodeJS.ProcessEnv, cwd: string): Config {
     reslabsLinkOrigin: new URL(reslabsLinkOrigin).origin,
     reslabsSessionUrl,
     tempoRpcUrl,
-    storeDbPath: path.resolve(cwd, storeDbPath),
+    databaseUrl,
+    cronSecret: env.CRON_SECRET?.trim() || undefined,
   };
 }
 
@@ -68,7 +73,7 @@ let parsed: Config | undefined;
 // Parsed on first property read, so `next build` can import server modules without runtime env.
 export const config: Config = new Proxy({} as Config, {
   get(_target, key) {
-    parsed ??= parseConfig(process.env, process.cwd());
+    parsed ??= parseConfig(process.env);
     return parsed[key as keyof Config];
   },
 });

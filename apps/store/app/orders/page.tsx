@@ -11,8 +11,8 @@ function formatTime(unixSeconds: number): string {
   return `${new Date(unixSeconds * 1000).toISOString().slice(0, 19).replace("T", " ")} UTC`;
 }
 
-export default function OrdersPage() {
-  const orders = listOrders();
+export default async function OrdersPage() {
+  const orders = await listOrders();
 
   return (
     <section>

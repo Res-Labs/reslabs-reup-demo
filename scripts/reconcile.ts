@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import {
   type Address,
   type Attempt,
@@ -7,7 +6,7 @@ import {
   PATH_USD,
   type Resolution,
 } from "@reup/chain-proof";
-import Database from "better-sqlite3";
+import { Client } from "pg";
 import { isAddress, parseUnits } from "viem";
 
 function requireEnv(name: string): string {
@@ -39,34 +38,34 @@ function parseAmount(name: string, value: string): bigint {
 const rpcUrl = requireEnv("TEMPO_RPC_URL");
 const recipient = parseAddress("MPP_RECIPIENT", requireEnv("MPP_RECIPIENT"));
 const amount = parseAmount("DEMO_PRICE", requireEnv("DEMO_PRICE"));
-// STORE_DB_PATH is shared via the root .env and is relative to the store's cwd, not the repo root.
-const dbPath = resolve("apps/store", process.env.STORE_DB_PATH?.trim() || "data/store.db");
+const databaseUrl = requireEnv("DATABASE_URL");
 
 interface AttemptRow {
   tx_hash: string;
   tap_id: string;
   payer: string;
-  valid_before: number;
+  // node-postgres returns BIGINT as a decimal string.
+  valid_before: string;
   status: "pending" | "review";
-  created_block: string | number | bigint;
+  created_block: string;
   note: string | null;
 }
 
-let db: Database.Database;
+const db = new Client({ connectionString: databaseUrl });
+let rows: AttemptRow[];
 try {
-  db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  await db.connect();
+  rows = (
+    await db.query<AttemptRow>(
+      "SELECT tx_hash, tap_id, payer, valid_before, status, created_block, note FROM payment_attempts WHERE status IN ('pending', 'review') ORDER BY created_at",
+    )
+  ).rows;
 } catch (err) {
-  console.error(`reconcile: cannot open store DB at ${dbPath}: ${(err as Error).message}`);
+  console.error(`reconcile: cannot read store DB: ${(err as Error).message}`);
   process.exit(1);
+} finally {
+  await db.end();
 }
-
-const rows = db
-  .prepare(
-    "SELECT tx_hash, tap_id, payer, valid_before, status, created_block, note FROM payment_attempts WHERE status IN ('pending', 'review') ORDER BY created_at",
-  )
-  .safeIntegers(false)
-  .all() as AttemptRow[];
-db.close();
 
 if (rows.length === 0) {
   console.log("No pending or review attempts.");
@@ -90,10 +89,11 @@ const chain = createChainProof({ rpcUrl, pathUsd: PATH_USD, recipient, amount })
 
 const report = [];
 for (const row of rows) {
+  const validBefore = Number(row.valid_before);
   const attempt: Attempt = {
     txHash: row.tx_hash as Hex,
     payer: row.payer as Address,
-    validBefore: row.valid_before,
+    validBefore,
     createdBlock: BigInt(row.created_block),
   };
   const chainResult = describe(await chain.resolveAttempt(attempt));
@@ -102,7 +102,7 @@ for (const row of rows) {
     tap_id: row.tap_id,
     tx_hash: row.tx_hash,
     payer: row.payer,
-    valid_before: new Date(row.valid_before * 1000).toISOString(),
+    valid_before: new Date(validBefore * 1000).toISOString(),
     chain: chainResult,
     note: row.note ?? "",
   });

@@ -12,18 +12,18 @@
   },
   "dependencies": {
     "@reup/chain-proof": "workspace:*",
-    "better-sqlite3": "^13",
     "mppx": "0.13.4",
     "next": "^16.2.6",
+    "pg": "^8.23.1",
     "react": "^19",
     "react-dom": "^19",
     "viem": "2.57.4"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7",
+    "@types/node": "^24",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/node": "^24",
     "tsx": "^4",
     "typescript": "^5.9"
   }

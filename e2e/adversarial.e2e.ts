@@ -8,7 +8,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { createChainProof, MODERATO_CHAIN_ID, PATH_USD } from "@reup/chain-proof";
-import Database from "better-sqlite3";
 import { Challenge, Credential } from "mppx";
 import { Proof } from "mppx/tempo";
 import {
@@ -163,12 +162,12 @@ function rejectionSince(stack: Stack, offset: number): string {
   return added.match(/credential rejected before broadcast \((\w+)\)/)?.[1] ?? "-";
 }
 
-const counts = (db: Database.Database) =>
-  db
-    .prepare<[], { attempts: number; orders: number }>(
-      "SELECT (SELECT count(*) FROM payment_attempts) AS attempts, (SELECT count(*) FROM orders) AS orders",
-    )
-    .get() ?? { attempts: Number.NaN, orders: Number.NaN };
+async function counts(stack: Stack): Promise<{ attempts: number; orders: number }> {
+  const [row] = await stack.query<{ attempts: string; orders: string }>(
+    "SELECT (SELECT count(*) FROM payment_attempts) AS attempts, (SELECT count(*) FROM orders) AS orders",
+  );
+  return { attempts: Number(row?.attempts), orders: Number(row?.orders) };
+}
 
 /**
  * Sends one adversarial reorder and asserts the store refused it before broadcast: 400,
@@ -176,14 +175,14 @@ const counts = (db: Database.Database) =>
  * eth_sendRawTransaction* reaching the RPC proxy, and no change to the agent's balance.
  */
 async function probe(
-  ctx: { stack: Stack; db: Database.Database; seenSendRaw: () => number },
+  ctx: { stack: Stack; seenSendRaw: () => number },
   name: string,
   verificationId: string,
   auth: string,
   expectedReason: string,
 ): Promise<void> {
   const before = {
-    ...counts(ctx.db),
+    ...(await counts(ctx.stack)),
     sendRaw: ctx.seenSendRaw(),
     balance: await pathUsdBalance(agent.address),
     log: readFileSync(path.join(ctx.stack.runDir, "store.log")).length,
@@ -191,7 +190,7 @@ async function probe(
   const response = await postReorder(ctx.stack, verificationId, auth);
   const body = (await response.json().catch(() => ({}))) as { error?: string };
   const after = {
-    ...counts(ctx.db),
+    ...(await counts(ctx.stack)),
     sendRaw: ctx.seenSendRaw(),
     balance: await pathUsdBalance(agent.address),
   };
@@ -292,19 +291,17 @@ async function priceCapCase(stack: Stack): Promise<void> {
     const verified = await client.callTool("reslabs_verify_tap", { link });
     assert.equal(verified.isError, false, `verify on the 2.00 store succeeded:\n${verified.text}`);
     const verificationId = toolField(verified.text, "verification_id");
-    const db = new Database(stack.dbPath, { readonly: true, fileMustExist: true });
     const balanceBefore = await pathUsdBalance(agent.address);
     const { isError, text } = await client.callTool("reslabs_reorder", {
       verification_id: verificationId,
     });
     const balanceAfter = await pathUsdBalance(agent.address);
-    const { attempts, orders } = counts(db);
-    const issued = db
-      .prepare<[], { n: number; used: number }>(
+    const { attempts, orders } = await counts(stack);
+    const [issued] = (
+      await stack.query<{ n: string; used: string }>(
         "SELECT count(*) AS n, count(used_at) AS used FROM issued_challenges",
       )
-      .get();
-    db.close();
+    ).map((r) => ({ n: Number(r.n), used: Number(r.used) }));
     const name = "k: 2.00 store, MCP over 1.10 cap";
     rows.push({
       name,
@@ -376,8 +373,7 @@ try {
     assert.ok(t !== undefined, `tap ${name} was verified`);
     return t;
   };
-  const db = new Database(stack.dbPath, { readonly: true, fileMustExist: true });
-  const ctx = { stack, db, seenSendRaw: () => proxy.seenSendRaw };
+  const ctx = { stack, seenSendRaw: () => proxy.seenSendRaw };
 
   const expiring = await issueChallenge(stack, tap("E"));
   assert.ok(expiring.expires !== undefined, "store challenges carry expires");
@@ -527,14 +523,15 @@ try {
   proxy.setMode("pass");
   console.log(`setup d: dropped broadcast answered HTTP ${dropped.status} ${await dropped.text()}`);
   assert.ok(proxy.seenSendRaw > sendRawBeforeDead, "the store tried to broadcast tap U's transfer");
-  const deadAttempt = () =>
-    db
-      .prepare<[Hex], { status: string; valid_before: number; created_block: string }>(
-        "SELECT status, valid_before, created_block FROM payment_attempts WHERE tx_hash = ?",
+  const deadAttempt = async () =>
+    (
+      await stack.query<{ status: string; valid_before: string; created_block: string }>(
+        "SELECT status, valid_before, created_block FROM payment_attempts WHERE tx_hash = $1",
+        [keccak256(deadTx)],
       )
-      .get(keccak256(deadTx));
+    ).map((r) => ({ ...r, valid_before: Number(r.valid_before) }))[0];
   const dead = await waitFor(
-    async () => (deadAttempt()?.status === "dead" ? true : undefined),
+    async () => ((await deadAttempt())?.status === "dead" ? true : undefined),
     90_000,
     "tap U's dropped attempt to end dead",
   ).catch(() => false);
@@ -545,11 +542,12 @@ try {
     "the dropped transfer never moved funds",
   );
   if (dead) {
-    const usedAt = db
-      .prepare<[string], { used_at: number | null }>(
-        "SELECT used_at FROM issued_challenges WHERE challenge_id = ?",
+    const [usedAt] = (
+      await stack.query<{ used_at: string | null }>(
+        "SELECT used_at FROM issued_challenges WHERE challenge_id = $1",
+        [challengeU.id],
       )
-      .get(challengeU.id)?.used_at;
+    ).map((r) => (r.used_at === null ? null : Number(r.used_at)));
     assert.ok(
       typeof usedAt === "number",
       "tap U's challenge was marked used when the attempt was reserved",
@@ -563,7 +561,7 @@ try {
       "challenge_used",
     );
   } else {
-    const row = deadAttempt();
+    const row = await deadAttempt();
     assert.ok(row !== undefined, "tap U's dropped transfer was reserved as an attempt");
     const resolution = await createChainProof({
       rpcUrl: MODERATO_RPC,
@@ -606,7 +604,6 @@ try {
     authorization(expiring, await signTransfer(expiring, stack.recipient)),
     "challenge_expired",
   );
-  db.close();
 } finally {
   await Promise.all(stacks.map((s) => s.stop()));
   await proxy.stop();

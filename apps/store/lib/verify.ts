@@ -32,7 +32,7 @@ export async function verify(req: Request): Promise<Response> {
   if (payer === null)
     throw new Error("mppx accepted a verify request without a parseable credential");
 
-  const verification = recordVerification({
+  const verification = await recordVerification({
     ...read.tap,
     payer,
     txHash: Receipt.fromResponse(charged.withReceipt(new Response(null))).reference.toLowerCase(),

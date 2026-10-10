@@ -41,7 +41,7 @@ The store reads the tap from Res Labs on every verify request, paid or not, and 
 
 | Path | Contents |
 |---|---|
-| `apps/store` | The Demo Store, a Next.js app. It serves `POST /api/verify`, `POST /api/reorder`, the product page `/` and the orders page `/orders`. It keeps its ledger in SQLite and starts the reconciler from `instrumentation.ts`. |
+| `apps/store` | The Demo Store, a Next.js app. It serves `POST /api/verify`, `POST /api/reorder`, `GET /api/cron/reconcile`, the product page `/` and the orders page `/orders`. It keeps its ledger in Postgres at `DATABASE_URL` and starts the reconciler from `instrumentation.ts`. |
 | `apps/mcp` | A stdio MCP server with the tools `reslabs_verify_tap` and `reslabs_reorder`. It holds the agent's wallet and checks every charge before it signs. `manifest.json` packages it as a Claude Desktop Extension. |
 | `packages/chain-proof` | `createChainProof()`, which returns `finalizedBlockNumber()` and `resolveAttempt(attempt)`. The store and `pnpm reconcile` use it to decide what happened to a payment. |
 | `scripts/mock-session.ts` | A local stand-in for Res Labs, started with `pnpm mock`. |
@@ -62,11 +62,11 @@ Verify fees have no reservation. Each paid verify call costs $0.001 and returns 
 
 The reorder is different. `mppx` answers 402 for every failed broadcast, even when the transfer already went through. A 402 therefore proves nothing about the money. The store reserves the exact signed transaction hash before broadcast and releases the tap only when the chain proves that transaction can never settle. The code is in `apps/store/lib/reorder.ts`, `apps/store/lib/binding.ts` and `packages/chain-proof`.
 
-1. The store checks its ledger first. If the tap already has an order, the store returns it with `already_ordered: true` and charges nothing. If the tap has a `pending` or `review` attempt, the store answers 409 `settlement_pending` or 409 `needs_review`. If the verification is more than 15 minutes old, the store answers 410 `verification_expired`.
+1. The store checks its ledger first. If the tap has a `pending` attempt, the store applies `resolveAttempt` to it once and updates the attempt by the table below. If the tap then has an order, the store returns it with `already_ordered: true` and charges nothing. If the tap still has a `pending` or `review` attempt, the store answers 409 `settlement_pending` or 409 `needs_review`. If the verification is more than 15 minutes old, the store answers 410 `verification_expired`.
 2. The store issues a 402 challenge for `DEMO_PRICE` and records it against the tap in `issued_challenges`.
 3. When the signed credential arrives, `bindCredential` checks it without touching the chain. The challenge must carry the store's HMAC, belong to this tap, be unused and unexpired, and ask for `DEMO_PRICE` pathUSD to `MPP_RECIPIENT` on chain 42431. The signed Tempo transaction must come from the credential's payer and make exactly one `transferWithMemo` call that pays that amount to that recipient. Its memo must be bound to the challenge ID. It must use an expiring nonce and set `validBefore` no more than 30 seconds ahead. If any check fails, the store answers 400 and broadcasts nothing.
-4. The store computes the hash of the exact transaction `mppx` will broadcast. In one SQLite transaction, it marks the challenge used and inserts a `pending` row in `payment_attempts`, keyed by that hash. A partial unique index allows one `pending`, `paid` or `review` attempt per tap, so a concurrent second request fails here.
-5. Only then does `mppx` broadcast. If it returns 200 with a receipt for the reserved hash, the store marks the attempt `paid` and inserts the order in the same SQLite transaction. If the receipt names any other hash, the attempt becomes `review`.
+4. The store computes the hash of the exact transaction `mppx` will broadcast. In one database transaction, it marks the challenge used and inserts a `pending` row in `payment_attempts`, keyed by that hash. A partial unique index allows one `pending`, `paid` or `review` attempt per tap, so a concurrent second request fails here.
+5. Only then does `mppx` broadcast. If it returns 200 with a receipt for the reserved hash, the store marks the attempt `paid` and inserts the order in the same database transaction. If the receipt names any other hash, the attempt becomes `review`.
 6. If `mppx` returns anything else or throws, the store calls `resolveAttempt` once a second until 15 seconds after `validBefore`, and answers from the result:
 
 | `resolveAttempt` result | Attempt becomes | Response |
@@ -79,7 +79,7 @@ The reorder is different. `mppx` answers 402 for every failed broadcast, even wh
 
 `resolveAttempt` sends the finalized block and the transaction receipt in one JSON-RPC batch. A receipt above the finalized block counts as `unknown`. A finalized receipt counts as paid only if it holds a `TransferWithMemo` log on pathUSD from the payer to `MPP_RECIPIENT` for exactly `DEMO_PRICE`. With no receipt, the result is `dead` only after the store reads every block from the attempt's `created_block` through the first block whose timestamp reaches `validBefore`, and none of them contains the hash. Block timestamps never decrease and `validBefore` is exclusive, so no later block can include that transaction. A null block or an RPC error makes the result `unknown`.
 
-Only a `dead` attempt frees the tap for a new payment. The store never matches a payment by sender, recipient or amount, and it never releases an attempt because time passed. The reconciler applies the same table to every `pending` attempt when the store boots and every 15 seconds after. A person settles `review` attempts by hand.
+Only a `dead` attempt frees the tap for a new payment. The store never matches a payment by sender, recipient or amount, and it never releases an attempt because time passed. The same table resolves a `pending` attempt in three places: the next reorder request for its tap, each `GET /api/cron/reconcile`, and the reconciler, which runs when a store process boots and every 15 seconds after. A serverless instance can stop at any moment, so the reorder request is the path that never leaves a tap stuck. A person settles `review` attempts by hand.
 
 The agent's wallet has its own guards in `apps/mcp/src/payments.ts`:
 
@@ -129,7 +129,7 @@ Moderato is chain 42431. Its RPC is `https://rpc.moderato.tempo.xyz`, and pathUS
 
 `scripts/mock-session.ts` stands in for Res Labs on `http://localhost:4010`, so you can run the whole agent flow without a tag. `POST /mint` returns a share link for a new synthetic tap. `GET /v/p/session?t=<token>` serves that tap's synthetic result. It answers 401 for an unknown link or for a link minted more than 5 minutes ago.
 
-You need Node.js 22.12 or later, pnpm 12, and Claude Code. Run every command from the repository root.
+You need Node.js 22.12 or later, pnpm 12, Docker, and Claude Code. Run every command from the repository root.
 
 1. Install the dependencies:
 
@@ -143,20 +143,26 @@ You need Node.js 22.12 or later, pnpm 12, and Claude Code. Run every command fro
 	cp .env.example .env
 	```
 
-3. In `.env`, set `MPP_SECRET_KEY` and `MPP_RECIPIENT`. The other values already point at the mock.
-4. Start the mock in one terminal. It prints `mock-session listening on http://localhost:4010`.
+3. In `.env`, set `MPP_SECRET_KEY` and `MPP_RECIPIENT`. The other values already point at the mock and at a local Postgres.
+4. Start Postgres. The store creates its tables on first use.
+
+	```sh
+	docker run -d --name reup-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16-alpine
+	```
+
+5. Start the mock in one terminal. It prints `mock-session listening on http://localhost:4010`.
 
 	```sh
 	pnpm mock
 	```
 
-5. Start the store in a second terminal. It serves the product page on `http://localhost:3000`.
+6. Start the store in a second terminal. It serves the product page on `http://localhost:3000`.
 
 	```sh
 	pnpm dev:store
 	```
 
-6. Build the MCP server and add it to Claude Code. Use the agent's private key and the same `MPP_RECIPIENT` as in `.env`.
+7. Build the MCP server and add it to Claude Code. Use the agent's private key and the same `MPP_RECIPIENT` as in `.env`.
 
 	```sh
 	pnpm --filter @reup/mcp build
@@ -167,19 +173,19 @@ You need Node.js 22.12 or later, pnpm 12, and Claude Code. Run every command fro
 		reslabs-reup -- node "$PWD/apps/mcp/dist/index.js"
 	```
 
-7. Mint a share link. The reply is `{"link":"http://localhost:4010/v/p?t=..."}`.
+8. Mint a share link. The reply is `{"link":"http://localhost:4010/v/p?t=..."}`.
 
 	```sh
 	curl -X POST localhost:4010/mint
 	```
 
-8. Within 5 minutes, start an interactive `claude` session and send `Re-up this: <link>`. The agent calls `reslabs_verify_tap`, which pays $0.001 and shows the product, vendor, vendor batch, COA and price. The agent then asks you to confirm the reorder.
-9. Confirm in chat, then answer **Yes** when Claude Code asks to run `reslabs_reorder`. The tool pays $1.00 and returns the order ID and an explorer link for the transaction.
-10. Open `http://localhost:3000/orders`. The page lists the order with its product, amount, payer and transaction.
+9. Within 5 minutes, start an interactive `claude` session and send `Re-up this: <link>`. The agent calls `reslabs_verify_tap`, which pays $0.001 and shows the product, vendor, vendor batch, COA and price. The agent then asks you to confirm the reorder.
+10. Confirm in chat, then answer **Yes** when Claude Code asks to run `reslabs_reorder`. The tool pays $1.00 and returns the order ID and an explorer link for the transaction.
+11. Open `http://localhost:3000/orders`. The page lists the order with its product, amount, payer and transaction.
 
 `reslabs_reorder` sets `_meta["anthropic/requiresUserInteraction"]`. With Claude Code 2.1.292 on Moderato, the tool showed a Yes or No approval prompt in the default interactive mode and under `--dangerously-skip-permissions`. The prompt has no option to stop asking. Headless `claude -p` can verify a tap but cannot reorder. Claude Code denied the reorder call with `MCPTool requires permission`, even with the tool in `--allowedTools` and permissions bypassed. Run the reorder step in an interactive `claude` session. Other permission modes are untested.
 
-Until every required store variable is valid, the store fails with `Missing or invalid store environment variables: <names>`. To see a rejected tap, mint a link for another batch with `curl -X POST localhost:4010/mint -d '{"batch_id":"another-batch"}'`. The store answers `not_eligible` and charges nothing. To start over with an empty ledger, stop the store and delete `apps/store/data/`.
+Until every required store variable is valid, the store fails with `Missing or invalid store environment variables: <names>`. To see a rejected tap, mint a link for another batch with `curl -X POST localhost:4010/mint -d '{"batch_id":"another-batch"}'`. The store answers `not_eligible` and charges nothing. To start over with an empty ledger, stop the store, run `docker rm -f reup-postgres`, and start Postgres again.
 
 ### Use a real tap instead of the mock
 
@@ -210,7 +216,7 @@ Then set the extension's tool permissions in Claude Desktop (Customize, then Con
 
 ## Run the end-to-end suites
 
-The suites run against live Moderato and pay real testnet pathUSD. Each suite builds the MCP server and starts its own stack. The stack runs the mock and the store (`next build`, then `next start`) on free ports. Its store uses a fresh random recipient address, so balance checks never mix with other runs. Its SQLite file, Next.js build and logs go to `.e2e/<run-id>/`.
+The suites run against live Moderato and pay real testnet pathUSD, and they need Docker. Each suite builds the MCP server and starts its own stack. The stack runs a throwaway `postgres:16-alpine` container, the mock, and the store (`next build`, then `next start`) on free ports, and removes the container when it stops. Its store uses a fresh random recipient address, so balance checks never mix with other runs. Its Next.js build and logs go to `.e2e/<run-id>/`.
 
 The suites read wallets from `.e2e/keys.json`, which is gitignored:
 
@@ -273,9 +279,19 @@ The suite puts `scripts/fault-proxy.ts` between the store and Moderato and runs 
 
 ## Report open payments
 
-`pnpm reconcile` lists every `pending` and `review` attempt in the store's SQLite file, with the current `resolveAttempt` result for each. It reads `TEMPO_RPC_URL`, `MPP_RECIPIENT`, `DEMO_PRICE` and `STORE_DB_PATH` from `.env`, opens the database read-only, and writes nothing. When nothing is open, it prints `No pending or review attempts.`
+`pnpm reconcile` lists every `pending` and `review` attempt in the store's database, with the current `resolveAttempt` result for each. It reads `TEMPO_RPC_URL`, `MPP_RECIPIENT`, `DEMO_PRICE` and `DATABASE_URL` from `.env`, runs one `SELECT`, and writes nothing. When nothing is open, it prints `No pending or review attempts.`
 
-The store resolves `pending` attempts itself, on boot and every 15 seconds. Settle `review` attempts by hand. The store never refunds testnet orders.
+The store resolves `pending` attempts itself. It does so on the next reorder request for the tap, on each `GET /api/cron/reconcile`, and every 15 seconds while a store process runs. Settle `review` attempts by hand. The store never refunds testnet orders.
+
+## Deploy to Vercel
+
+`.agents/skills/deploy-fe/scripts/deploy-fe.sh` deploys the store to production on a Vercel project's `*.vercel.app` domain. It needs a hosted Postgres, such as Neon from the Vercel Marketplace, and an env file with the production values. Keep that file out of git, for example as `.env.production`:
+
+```sh
+.agents/skills/deploy-fe/scripts/deploy-fe.sh --scope <your-team-slug> --env-file .env.production
+```
+
+`.agents/skills/deploy-fe/SKILL.md` lists the variables the script syncs, what it refuses, and what it prints. Vercel can stop an instance at any moment, and Hobby plans run cron jobs once a day. The reorder request is therefore the main recovery path for a `pending` attempt, and the daily cron in `apps/store/vercel.json` is a backstop.
 
 ## Environment variables
 
@@ -291,7 +307,8 @@ The store resolves `pending` attempts itself, on boot and every 15 seconds. Sett
 | `RESLABS_LINK_ORIGIN` | store | The origin every share link must have. The mock uses `http://localhost:4010`, and Res Labs uses `https://verify.reslabs.ai`. |
 | `RESLABS_SESSION_URL` | store | The session endpoint. The mock uses `http://localhost:4010/v/p/session`, and Res Labs uses `https://api.reslabs.ai/v/p/session`. |
 | `TEMPO_RPC_URL` | store, `pnpm reconcile` | The Moderato RPC, `https://rpc.moderato.tempo.xyz`. |
-| `STORE_DB_PATH` | store, `pnpm reconcile` | Optional. The SQLite file, relative to `apps/store`. The default is `data/store.db`. |
+| `DATABASE_URL` | store, `pnpm reconcile` | The Postgres connection string. `.env.example` points at the local container from `docker run -d --name reup-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16-alpine`. The store creates its tables on first use. |
+| `CRON_SECRET` | store | Optional locally, required by the Vercel deploy. When it is set, `GET /api/cron/reconcile` answers 401 unless the request sends `Authorization: Bearer <CRON_SECRET>`. Vercel Cron sends that header. |
 | `STORE_DIST_DIR` | store | Optional. The Next.js build directory, relative to `apps/store`. The default is `.next`. |
 | `MOCK_PORT` | `pnpm mock` | Optional. The mock's port. The default is `4010`. |
 | `AGENT_KEY` | MCP server | The private key of the agent's wallet. |
@@ -301,7 +318,7 @@ The verify fee ($0.001) and the pathUSD address are constants in the code, not v
 
 ## Testnet only
 
-This is a testnet demo. Every payment is pathUSD on Tempo Moderato, which has no monetary value. Use only testnet keys. The Demo Store fulfills nothing. An order is a row in SQLite, and no product ships. Every store page shows a "Testnet demo, no real orders" banner and a "For research use only" label.
+This is a testnet demo. Every payment is pathUSD on Tempo Moderato, which has no monetary value. Use only testnet keys. The Demo Store fulfills nothing. An order is a database row, and no product ships. Every store page shows a "Testnet demo, no real orders" banner and a "For research use only" label.
 
 ## Pre-existing work
 

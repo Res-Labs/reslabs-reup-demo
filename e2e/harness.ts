@@ -1,13 +1,15 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { type AddressInfo, createServer } from "node:net";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { PATH_USD } from "@reup/chain-proof";
+import { Client as PgClient, Pool } from "pg";
 import { type Address, createPublicClient, erc20Abi, type Hex, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { tempoModerato } from "viem/chains";
@@ -20,6 +22,9 @@ const STORE_DIR = path.join(REPO_ROOT, "apps/store");
 const NEXT_BIN = path.join(STORE_DIR, "node_modules/.bin/next");
 const TSX_BIN = path.join(REPO_ROOT, "node_modules/.bin/tsx");
 const MCP_ENTRY = path.join(REPO_ROOT, "apps/mcp/dist/index.js");
+const PG_PASSWORD = "reup-e2e";
+
+const execFileAsync = promisify(execFile);
 
 export interface Wallet {
   pk: Hex;
@@ -94,7 +99,8 @@ export interface Stack {
   runDir: string;
   storeUrl: string;
   mockUrl: string;
-  dbPath: string;
+  databaseUrl: string;
+  query<T>(sql: string, params?: unknown[]): Promise<T[]>;
   recipient: Address;
   batchId: string;
   mint(batchId?: string): Promise<string>;
@@ -141,6 +147,46 @@ async function kill(child: ChildProcess): Promise<void> {
   }
 }
 
+/** Starts a throwaway Postgres on a Docker-assigned loopback port and returns its URL once it accepts queries. */
+async function startPostgres(container: string): Promise<string> {
+  await execFileAsync("docker", [
+    "run",
+    "-d",
+    "--rm",
+    "--name",
+    container,
+    "-e",
+    `POSTGRES_PASSWORD=${PG_PASSWORD}`,
+    "-p",
+    "127.0.0.1::5432",
+    "postgres:16-alpine",
+  ]);
+  const { stdout } = await execFileAsync("docker", ["port", container, "5432/tcp"]);
+  const port = stdout.trim().split("\n")[0]?.split(":").pop();
+  if (!port || !/^\d+$/.test(port)) throw new Error(`docker port ${container}: "${stdout.trim()}"`);
+  const url = `postgres://postgres:${PG_PASSWORD}@127.0.0.1:${port}/postgres`;
+  await waitFor(
+    async () => {
+      const client = new PgClient({ connectionString: url, connectionTimeoutMillis: 2_000 });
+      try {
+        await client.connect();
+        await client.query("SELECT 1");
+        return true;
+      } finally {
+        await client.end().catch(() => {});
+      }
+    },
+    60_000,
+    `postgres container ${container}`,
+  );
+  return url;
+}
+
+async function removeContainer(container: string): Promise<void> {
+  // Missing container means a prior stop() or --rm already removed it.
+  await execFileAsync("docker", ["rm", "-f", container]).catch(() => {});
+}
+
 export async function startStack(opts: StackOptions = {}): Promise<Stack> {
   if (!existsSync(MCP_ENTRY))
     throw new Error(`${MCP_ENTRY} is missing: run pnpm --filter @reup/mcp build`);
@@ -154,8 +200,33 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
   // A fresh recipient per stack keeps balance deltas from mixing with concurrent runs.
   const recipient = privateKeyToAccount(`0x${randomBytes(32).toString("hex")}`).address;
   const batchId = randomUUID();
-  const dbPath = path.join(runDir, "store.db");
+  const container = `reup-e2e-${runId}`;
   const log = (name: string) => path.join(runDir, `${name}.log`);
+
+  const children: ChildProcess[] = [];
+  let store: ChildProcess | undefined;
+  let pool: Pool | undefined;
+
+  const stop = async () => {
+    await Promise.all(children.map(kill));
+    const ending = pool;
+    pool = undefined;
+    await ending?.end();
+    await removeContainer(container);
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+  };
+  const onSignal = () => {
+    void stop().finally(() => process.exit(130));
+  };
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+
+  const databaseUrl = await startPostgres(container).catch(async (error: unknown) => {
+    await stop();
+    throw error;
+  });
+  pool = new Pool({ connectionString: databaseUrl, max: 2 });
 
   const storeEnv: NodeJS.ProcessEnv = {
     ...process.env,
@@ -169,11 +240,8 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
     RESLABS_LINK_ORIGIN: mockUrl,
     RESLABS_SESSION_URL: `${mockUrl}/v/p/session`,
     TEMPO_RPC_URL: opts.rpcUrl ?? MODERATO_RPC,
-    STORE_DB_PATH: dbPath,
+    DATABASE_URL: databaseUrl,
   };
-
-  const children: ChildProcess[] = [];
-  let store: ChildProcess | undefined;
 
   const startStore = async () => {
     store = launch(NEXT_BIN, ["start", "-p", String(storePort), "-H", "127.0.0.1"], {
@@ -188,17 +256,6 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
       `store on ${storeUrl}`,
     );
   };
-
-  const stop = async () => {
-    await Promise.all(children.map(kill));
-    process.off("SIGINT", onSignal);
-    process.off("SIGTERM", onSignal);
-  };
-  const onSignal = () => {
-    void stop().finally(() => process.exit(130));
-  };
-  process.on("SIGINT", onSignal);
-  process.on("SIGTERM", onSignal);
 
   try {
     children.push(
@@ -224,7 +281,11 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
     runDir,
     storeUrl,
     mockUrl,
-    dbPath,
+    databaseUrl,
+    async query<T>(sql: string, params?: unknown[]) {
+      if (pool === undefined) throw new Error(`stack ${runId} is stopped`);
+      return (await pool.query(sql, params)).rows as T[];
+    },
     recipient,
     batchId,
     stop,

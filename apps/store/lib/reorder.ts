@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { type ChainProof, createChainProof, PATH_USD, type Resolution } from "@reup/chain-proof";
 import { Challenge, Receipt } from "mppx";
-import { bindCredential } from "./binding";
+import { bindCredential, parseCredential } from "./binding";
 import { config } from "./config";
 import {
   type AttemptState,
@@ -75,12 +75,14 @@ export async function reorder(req: Request): Promise<Response> {
 }
 
 async function everyReorderRequest(req: Request, verificationId: string): Promise<Response> {
-  const verification = findVerification(verificationId);
+  const verification = await findVerification(verificationId);
   if (verification === undefined) return errorResponse(404, "unknown_verification");
 
-  const order = findOrderByTap(verification.tapId);
+  // The instance that reserved a pending attempt may be gone, so each request resolves it once.
+  await reconcile(verification.tapId);
+  const order = await findOrderByTap(verification.tapId);
   if (order !== undefined) return Response.json(orderBody(order, true));
-  const open = openAttemptStatus(verification.tapId);
+  const open = await openAttemptStatus(verification.tapId);
   if (open !== undefined) return errorResponse(409, OPEN_ATTEMPT_ERROR[open]);
 
   if (unixNow() - verification.createdAt > VERIFICATION_TTL_SECONDS) {
@@ -102,7 +104,7 @@ async function issueChallenge(req: Request, tapId: string): Promise<Response> {
     throw new Error("mppx accepted a reorder request without a credential");
   const challenge = Challenge.fromResponse(result.challenge);
   if (challenge.expires === undefined) throw new Error("mppx issued a challenge without expires");
-  recordIssuedChallenge({
+  await recordIssuedChallenge({
     challengeId: challenge.id,
     tapId,
     amount: String(challenge.request.amount),
@@ -116,18 +118,25 @@ async function payWithCredential(
   verification: Verification,
   authorization: string,
 ): Promise<Response> {
-  const binding = await bindCredential(authorization, findIssuedChallenge, {
-    secretKey: config.mppSecretKey,
-    recipient: config.mppRecipient,
-    amount: config.demoPriceUnits,
-    tapId: verification.tapId,
-    now: unixNow(),
-  });
+  // bindCredential looks the challenge up synchronously, so it is read first.
+  const challengeId = parseCredential(authorization)?.challenge.id;
+  const issued = challengeId === undefined ? undefined : await findIssuedChallenge(challengeId);
+  const binding = await bindCredential(
+    authorization,
+    (id) => (id === issued?.challengeId ? issued : undefined),
+    {
+      secretKey: config.mppSecretKey,
+      recipient: config.mppRecipient,
+      amount: config.demoPriceUnits,
+      tapId: verification.tapId,
+      now: unixNow(),
+    },
+  );
   if (!binding.ok) {
     console.warn(`reorder: credential rejected before broadcast (${binding.reason})`);
     return errorResponse(400, "bad_credential");
   }
-  if (attemptExists(binding.txHash)) return errorResponse(409, "credential_reused");
+  if (await attemptExists(binding.txHash)) return errorResponse(409, "credential_reused");
 
   const attempt: PaymentAttempt = {
     txHash: binding.txHash,
@@ -136,7 +145,7 @@ async function payWithCredential(
     validBefore: binding.validBefore,
     createdBlock: await chainProof().finalizedBlockNumber(),
   };
-  if (!reserveAttempt(attempt, binding.challengeId)) {
+  if (!(await reserveAttempt(attempt, binding.challengeId))) {
     return everyReorderRequest(req, verification.verificationId);
   }
 
@@ -150,14 +159,14 @@ async function payWithCredential(
       charged.withReceipt(new Response(null)),
     ).reference.toLowerCase();
     if (reference !== attempt.txHash) {
-      markResolved(
+      await markResolved(
         attempt.txHash,
         "review",
         `mppx receipt reference ${reference} differs from reserved ${attempt.txHash}`,
       );
       return errorResponse(409, "needs_review");
     }
-    const state = settle(attempt, config.demoPriceUnits);
+    const state = await settle(attempt, config.demoPriceUnits);
     if (state.status === "paid")
       return charged.withReceipt(Response.json(orderBody(state.order, false)));
     return respondToAttempt(req, attempt.tapId, state);
@@ -167,13 +176,13 @@ async function payWithCredential(
   for (;;) {
     const resolution = await chainProof().resolveAttempt(attempt);
     if (resolution.kind !== "unknown") {
-      applyResolution(attempt, resolution);
+      await applyResolution(attempt, resolution);
       break;
     }
     if (Date.now() >= deadline) break;
     await sleep(INLINE_POLL_MS);
   }
-  return respondToAttempt(req, attempt.tapId, attemptState(attempt.txHash));
+  return respondToAttempt(req, attempt.tapId, await attemptState(attempt.txHash));
 }
 
 async function respondToAttempt(
@@ -200,28 +209,32 @@ async function respondToAttempt(
   }
 }
 
-/** The one table both the inline resolution and the reconciler apply. */
-function applyResolution(attempt: PaymentAttempt, resolution: Resolution): void {
+/** The one table the inline resolution and `reconcile` both apply. */
+async function applyResolution(attempt: PaymentAttempt, resolution: Resolution): Promise<void> {
   switch (resolution.kind) {
     case "settled-paid":
-      settle(attempt, config.demoPriceUnits);
+      await settle(attempt, config.demoPriceUnits);
       return;
     case "settled-no-transfer":
-      markResolved(
+      await markResolved(
         attempt.txHash,
         "review",
         `included in block ${resolution.blockNumber} without a matching TransferWithMemo`,
       );
       return;
     case "reverted-no-transfer":
-      markResolved(
+      await markResolved(
         attempt.txHash,
         "dead",
         `reverted in block ${resolution.blockNumber}; nothing reached the recipient`,
       );
       return;
     case "dead":
-      markResolved(attempt.txHash, "dead", "no block up to validBefore includes the transaction");
+      await markResolved(
+        attempt.txHash,
+        "dead",
+        "no block up to validBefore includes the transaction",
+      );
       return;
     case "unknown":
       return;
@@ -229,19 +242,27 @@ function applyResolution(attempt: PaymentAttempt, resolution: Resolution): void 
 }
 
 /**
- * Resolves every pending attempt on boot and every 15 s. Attempts change only on a final
- * `resolveAttempt` result for their own hash: never by sender, recipient or amount, and never
- * because time passed.
+ * Resolves every pending attempt once, or only the tap's when `tapId` is given, and returns how
+ * many it checked. Attempts change only on a final `resolveAttempt` result for their own hash:
+ * never by sender, recipient or amount, and never because time passed. Every write it makes is
+ * conditional or idempotent, so concurrent passes from several instances converge.
  */
+export async function reconcile(tapId?: string): Promise<number> {
+  const pending = await listPendingAttempts(tapId);
+  for (const attempt of pending) {
+    await applyResolution(attempt, await chainProof().resolveAttempt(attempt));
+  }
+  return pending.length;
+}
+
+/** Runs `reconcile` on boot and every 15 s in a long-lived process such as `next start`. */
 export function startReconciler(): void {
   let running = false;
   const pass = async () => {
     if (running) return;
     running = true;
     try {
-      for (const attempt of listPendingAttempts()) {
-        applyResolution(attempt, await chainProof().resolveAttempt(attempt));
-      }
+      await reconcile();
     } catch (error) {
       console.error("reconciler pass failed:", error instanceof Error ? error.message : error);
     } finally {

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { MODERATO_CHAIN_ID } from "@reup/chain-proof";
-import Database from "better-sqlite3";
 import { Mppx, tempo } from "mppx/client";
 import { formatUnits, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -37,6 +36,12 @@ interface OrderRow {
 interface Ledger {
   attempts: AttemptRow[];
   order: OrderRow | undefined;
+}
+
+/** node-postgres returns BIGINT columns as decimal strings. */
+interface BigintColumns {
+  valid_before: string;
+  resolved_at: string | null;
 }
 
 interface Tap {
@@ -81,32 +86,33 @@ payer.onCredentialCreated(() => {
   signed += 1;
 });
 
-function ledger(tapId: string): Ledger {
-  const db = new Database(stack.dbPath, { readonly: true, fileMustExist: true });
-  try {
-    return {
-      attempts: db
-        .prepare<[string], AttemptRow>(
-          `SELECT tx_hash, status, valid_before, created_block, resolved_at
-           FROM payment_attempts WHERE tap_id = ? ORDER BY created_at, rowid`,
-        )
-        .all(tapId),
-      order: db
-        .prepare<[string], OrderRow>(
-          "SELECT order_id, tx_hash, payer, amount FROM orders WHERE tap_id = ?",
-        )
-        .get(tapId),
-    };
-  } finally {
-    db.close();
-  }
+async function ledger(tapId: string): Promise<Ledger> {
+  // A tap's only non-dead attempt is its newest, so dead-first breaks same-second ties.
+  const [attempts, [order]] = await Promise.all([
+    stack.query<Omit<AttemptRow, "valid_before" | "resolved_at"> & BigintColumns>(
+      `SELECT tx_hash, status, valid_before, created_block, resolved_at
+       FROM payment_attempts WHERE tap_id = $1 ORDER BY created_at, status <> 'dead'`,
+      [tapId],
+    ),
+    stack.query<OrderRow>("SELECT order_id, tx_hash, payer, amount FROM orders WHERE tap_id = $1", [
+      tapId,
+    ]),
+  ]);
+  return {
+    attempts: attempts.map((a) => ({
+      ...a,
+      valid_before: Number(a.valid_before),
+      resolved_at: a.resolved_at === null ? null : Number(a.resolved_at),
+    })),
+    order,
+  };
 }
 
 /** Allows several 15 s reconciler passes, since concurrent suites share the RPC's rate limit. */
 async function resolved(tapId: string): Promise<Ledger> {
   return waitFor(
     async () => {
-      const state = ledger(tapId);
+      const state = await ledger(tapId);
       const settled =
         state.attempts.length > 0 && state.attempts.every((a) => a.status !== "pending");
       return settled ? state : undefined;
@@ -284,7 +290,7 @@ async function reviewOnStrippedLogs(): Promise<Row[]> {
   const {
     attempts: [attempt, ...extra],
     order,
-  } = ledger(tap.tapId);
+  } = await ledger(tap.tapId);
   assert.ok(attempt && extra.length === 0, "the tap has exactly one payment attempt");
   assert.equal(attempt.status, "review", "the attempt ends review");
   assert.equal(order, undefined, "the review attempt has no order row");
@@ -298,7 +304,11 @@ async function reviewOnStrippedLogs(): Promise<Row[]> {
     "a second reorder for the tap answers 409 needs_review",
   );
   assert.equal(signed - signedBefore, 1, "the second reorder signed no credential");
-  assert.equal(ledger(tap.tapId).attempts.length, 1, "the second reorder created no attempt");
+  assert.equal(
+    (await ledger(tap.tapId)).attempts.length,
+    1,
+    "the second reorder created no attempt",
+  );
 
   const delta = await recipientDelta(tap.verifyBlock, await blockAtOrAfter(attempt.valid_before));
   assert.equal(delta, PRICE, "only the review attempt's 1.00 reached the recipient");
@@ -321,7 +331,7 @@ async function deadThenPaid(): Promise<Row[]> {
   const inflight = reorder(tap.verificationId);
   await waitFor(
     async () =>
-      proxy.seenSendRaw > sendsBefore && ledger(tap.tapId).attempts[0]?.status === "pending"
+      proxy.seenSendRaw > sendsBefore && (await ledger(tap.tapId)).attempts[0]?.status === "pending"
         ? true
         : undefined,
     30_000,
@@ -350,7 +360,7 @@ async function deadThenPaid(): Promise<Row[]> {
   assert.equal(deadDelta, 0n, "the dead attempt moved nothing to the recipient");
 
   const retry = await reorder(tap.verificationId);
-  const { attempts, order } = ledger(tap.tapId);
+  const { attempts, order } = await ledger(tap.tapId);
   const [, attempt, ...more] = attempts;
   assert.ok(attempt && more.length === 0, "the new reorder made exactly one more attempt");
   const paid = await assertPaid(attempt, order);
@@ -393,7 +403,7 @@ async function resolvedOnBoot(): Promise<Row[]> {
   });
   await waitFor(
     async () =>
-      proxy.seenSendRaw > sendsBefore && ledger(tap.tapId).attempts[0]?.status === "pending"
+      proxy.seenSendRaw > sendsBefore && (await ledger(tap.tapId)).attempts[0]?.status === "pending"
         ? true
         : undefined,
     60_000,
@@ -401,7 +411,7 @@ async function resolvedOnBoot(): Promise<Row[]> {
   );
   const crashedAt = await crashStore();
   assert.equal(
-    ledger(tap.tapId).attempts[0]?.status,
+    (await ledger(tap.tapId)).attempts[0]?.status,
     "pending",
     "the attempt is pending when the store dies",
   );
