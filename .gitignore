@@ -14,3 +14,4 @@ data/
 next-env.d.ts
 .DS_Store
 .vercel/
+apps/store/AGENTS.md

@@ -1,62 +1,56 @@
+import { Receipt } from "lucide-react";
+import Link from "next/link";
+import { EmptyState } from "@/components/arc/empty-state/empty-state";
+import { type OrderRow, OrdersTable } from "@/components/orders-table";
 import { listOrders } from "../../lib/ledger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function shortAddress(address: string): string {
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
-
-function formatTime(unixSeconds: number): string {
-  return `${new Date(unixSeconds * 1000).toISOString().slice(0, 19).replace("T", " ")} UTC`;
-}
+const timeFormat = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
 export default async function OrdersPage() {
-  const orders = await listOrders();
+  const rows: OrderRow[] = (await listOrders()).map((order) => ({
+    orderId: order.orderId,
+    productName: order.productName,
+    amount: Number(order.amount),
+    amountLabel: order.amount,
+    payer: order.payer,
+    txHash: order.txHash,
+    createdAt: order.createdAt,
+    time: timeFormat.format(new Date(order.createdAt * 1000)),
+  }));
 
   return (
-    <section>
-      <h1 className="page-title">Orders</h1>
-      {orders.length === 0 ? (
-        <p className="empty">No orders yet.</p>
+    <>
+      <div className="page-head">
+        <h1>Paid orders</h1>
+        <p className="lede">Reorders that agents paid for on Tempo testnet, newest first.</p>
+      </div>
+      {rows.length === 0 ? (
+        <div className="empty-panel">
+          <EmptyState
+            label="Paid orders"
+            icon={<Receipt size={24} strokeWidth={1.75} />}
+            title="No orders yet"
+            description="An order appears here after an agent pays for a reorder."
+            action={
+              <Link className="primary-link" href="/">
+                View the product
+              </Link>
+            }
+          />
+        </div>
       ) : (
-        <table className="orders">
-          <thead>
-            <tr>
-              <th>Order</th>
-              <th>Product</th>
-              <th>Amount</th>
-              <th>Payer</th>
-              <th>Time</th>
-              <th>Transaction</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((order) => (
-              <tr key={order.orderId}>
-                <td data-label="Order" className="mono">
-                  {order.orderId}
-                </td>
-                <td data-label="Product">{order.productName}</td>
-                <td data-label="Amount">{order.amount} pathUSD</td>
-                <td data-label="Payer" className="mono" title={order.payer}>
-                  {shortAddress(order.payer)}
-                </td>
-                <td data-label="Time">{formatTime(order.createdAt)}</td>
-                <td data-label="Transaction">
-                  <a
-                    href={`https://explore.testnet.tempo.xyz/tx/${order.txHash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    View on explorer
-                  </a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <OrdersTable rows={rows} />
       )}
-    </section>
+    </>
   );
 }
