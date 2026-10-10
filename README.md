@@ -309,6 +309,7 @@ The store resolves `pending` attempts itself. It does so on the next reorder req
 | `TEMPO_RPC_URL` | store, `pnpm reconcile` | The Moderato RPC, `https://rpc.moderato.tempo.xyz`. |
 | `DATABASE_URL` | store, `pnpm reconcile` | The Postgres connection string. `.env.example` points at the local container from `docker run -d --name reup-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16-alpine`. The store creates its tables on first use. |
 | `CRON_SECRET` | store | Optional locally, required by the Vercel deploy. When it is set, `GET /api/cron/reconcile` answers 401 unless the request sends `Authorization: Bearer <CRON_SECRET>`. Vercel Cron sends that header. |
+| `RESLABS_EDGE_KEY` | store | Optional. A key Res Labs issues so its edge does not challenge the store's server, which runs on datacenter IPs. The store sends it as the `x-reslabs-reup-key` header on session reads. |
 | `STORE_DIST_DIR` | store | Optional. The Next.js build directory, relative to `apps/store`. The default is `.next`. |
 | `MOCK_PORT` | `pnpm mock` | Optional. The mock's port. The default is `4010`. |
 | `AGENT_KEY` | MCP server | The private key of the agent's wallet. |

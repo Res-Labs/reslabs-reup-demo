@@ -16,6 +16,8 @@ export interface Config {
   databaseUrl: string;
   /** When set, `GET /api/cron/reconcile` requires `Authorization: Bearer <cronSecret>`. */
   cronSecret: string | undefined;
+  /** Sent as `x-reslabs-reup-key` on session reads, when Res Labs gave this store an edge key. */
+  reslabsEdgeKey: string | undefined;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -65,6 +67,7 @@ export function parseConfig(env: NodeJS.ProcessEnv): Config {
     tempoRpcUrl,
     databaseUrl,
     cronSecret: env.CRON_SECRET?.trim() || undefined,
+    reslabsEdgeKey: env.RESLABS_EDGE_KEY?.trim() || undefined,
   };
 }
 

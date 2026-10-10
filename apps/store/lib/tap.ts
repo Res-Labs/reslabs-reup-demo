@@ -89,6 +89,7 @@ export async function readTap(link: string): Promise<TapRead> {
   try {
     const response = await fetch(sessionUrl, {
       cache: "no-store",
+      headers: config.reslabsEdgeKey ? { "x-reslabs-reup-key": config.reslabsEdgeKey } : {},
       signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
     });
     if (response.status !== 200 && response.status !== 401) {

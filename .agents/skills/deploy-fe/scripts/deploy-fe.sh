@@ -4,6 +4,7 @@ set -euo pipefail
 
 required_env=(MPP_SECRET_KEY MPP_RECIPIENT DEMO_BATCH_ID DEMO_SKU DEMO_PRICE RESLABS_LINK_ORIGIN
 	RESLABS_SESSION_URL TEMPO_RPC_URL DATABASE_URL CRON_SECRET)
+optional_env=(RESLABS_EDGE_KEY)
 url_env=(DATABASE_URL RESLABS_LINK_ORIGIN RESLABS_SESSION_URL TEMPO_RPC_URL)
 placeholder_env=(MPP_SECRET_KEY MPP_RECIPIENT DEMO_BATCH_ID)
 
@@ -162,6 +163,11 @@ sync_env() {
 for name in "${required_env[@]}"; do
 	sync_env "$name" "$(env_value "$env_file" "$name")"
 done
+for name in "${optional_env[@]}"; do
+	value=$(env_value "$env_file" "$name")
+	if [ -n "$value" ]; then sync_env "$name" "$value"; fi
+done
+unset value
 # Vercel only knows pnpm up to 10. Corepack installs the version pinned in package.json#packageManager.
 sync_env ENABLE_EXPERIMENTAL_COREPACK 1
 

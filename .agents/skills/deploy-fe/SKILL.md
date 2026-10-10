@@ -25,6 +25,7 @@ description: Deploy the Demo Store (apps/store) to production on a Vercel projec
 | `TEMPO_RPC_URL` | `https://rpc.moderato.tempo.xyz` |
 | `DATABASE_URL` | The hosted Postgres connection string. |
 | `CRON_SECRET` | A new random secret. Vercel Cron sends it as `Authorization: Bearer <CRON_SECRET>`. |
+| `RESLABS_EDGE_KEY` | Optional. The key Res Labs issued for this store, sent as `x-reslabs-reup-key`. Without it, the Res Labs edge answers Vercel's network with 403. Synced only when present. |
 
 ## Run
 
@@ -72,7 +73,7 @@ The script prints `deployment_url=` as soon as the deploy returns, so the URL su
 
 The probes do not prove a paid reorder. To prove one, set the MCP server's `STORE_URL` to `production_url` and run one real tap through the agent. That tap pays real testnet pathUSD.
 
-The probes also do not prove the store can reach Res Labs. Check that by hand: `POST /api/verify` with body `{"link":"https://verify.reslabs.ai/v/p?t=invalid"}` must answer 410 `link_expired`. A 502 `reslabs_unavailable` means the session endpoint answered something other than 200 or 401. The store logs that status as `res labs session answered HTTP <status>` in the deployment's runtime logs. A 403 there means the Res Labs edge is refusing Vercel's network, and only Res Labs can lift that.
+The probes also do not prove the store can reach Res Labs. Check that by hand: `POST /api/verify` with body `{"link":"https://verify.reslabs.ai/v/p?t=invalid"}` must answer 410 `link_expired`. A 502 `reslabs_unavailable` means the session endpoint answered something other than 200 or 401. The store logs that status as `res labs session answered HTTP <status>` in the deployment's runtime logs. A 403 there means the Res Labs edge is refusing Vercel's network: check `RESLABS_EDGE_KEY` is set and matches the key Res Labs holds.
 
 ## Output contract
 
