@@ -72,6 +72,8 @@ The script prints `deployment_url=` as soon as the deploy returns, so the URL su
 
 The probes do not prove a paid reorder. To prove one, set the MCP server's `STORE_URL` to `production_url` and run one real tap through the agent. That tap pays real testnet pathUSD.
 
+The probes also do not prove the store can reach Res Labs. Check that by hand: `POST /api/verify` with body `{"link":"https://verify.reslabs.ai/v/p?t=invalid"}` must answer 410 `link_expired`. A 502 `reslabs_unavailable` means the session endpoint answered something other than 200 or 401. The store logs that status as `res labs session answered HTTP <status>` in the deployment's runtime logs. A 403 there means the Res Labs edge is refusing Vercel's network, and only Res Labs can lift that.
+
 ## Output contract
 
 Stdout is `key=value` lines in this order: `source=` and `dirty=`, `project=`, `project_id=`, `org_id=`, `settings=`, one `env=<NAME> synced` per variable, `deployment_url=`, `state=`, `production_url=` with `custom_domains=none`, one `probe=` line per probe, then the verdict.
