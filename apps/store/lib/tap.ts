@@ -91,8 +91,12 @@ export async function readTap(link: string): Promise<TapRead> {
       cache: "no-store",
       signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
     });
+    if (response.status !== 200 && response.status !== 401) {
+      console.warn(`res labs session answered HTTP ${response.status}`);
+    }
     return projectSession(response.status, await response.text(), config.demoBatchId);
-  } catch {
+  } catch (error) {
+    console.warn(`res labs session unreachable: ${error instanceof Error ? error.name : "error"}`);
     return { kind: "rejected", error: "reslabs_unavailable" };
   }
 }
