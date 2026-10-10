@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <SiteNav />
           </header>
           <Alert title="Testnet demo, no real orders">
-            Payments use testnet pathUSD on Tempo. Nothing is charged or shipped.
+            Payments use testnet pathUSD on Tempo, which has no monetary value. Nothing ships.
           </Alert>
           <main className="main">{children}</main>
         </div>
