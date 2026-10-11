@@ -174,6 +174,7 @@ You need Node.js 22.12 or later, pnpm 12, Docker, and Claude Code. Run every com
 	```
 
 	The server name goes first because `-e` takes every following word as another variable. `--scope user` makes the server available wherever you start `claude`.
+
 8. Mint a share link. The reply is `{"link":"http://localhost:4010/v/p?t=..."}`.
 
 	```sh
