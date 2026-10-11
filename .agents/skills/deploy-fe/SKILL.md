@@ -18,7 +18,7 @@ description: Deploy the Demo Store (apps/store) to production on a Vercel projec
 |---|---|
 | `MPP_SECRET_KEY` | A new random secret (`openssl rand -hex 32`). |
 | `MPP_RECIPIENT` | The Moderato address that receives payments. |
-| `DEMO_BATCH_ID` | The vendor batch ID of the tagged product. With any other ID, every tap answers `not_eligible`. |
+| `DEMO_BATCH_IDS` | The vendor batch IDs of the tagged products, separated by commas. A tap from any other batch answers `not_eligible`. |
 | `DEMO_SKU`, `DEMO_PRICE` | The product label and the reorder price. |
 | `RESLABS_LINK_ORIGIN` | `https://verify.reslabs.ai` |
 | `RESLABS_SESSION_URL` | `https://api.reslabs.ai/v/p/session` |
@@ -44,7 +44,7 @@ The script stops with `result=blocked` before it changes anything on Vercel when
 - the env file sits inside the repository and is tracked by git or not gitignored (`env_file_not_ignored`),
 - a required variable is missing or empty,
 - `DATABASE_URL`, `RESLABS_LINK_ORIGIN`, `RESLABS_SESSION_URL`, or `TEMPO_RPC_URL` points at `localhost`, a loopback address, or `host.docker.internal`,
-- `MPP_SECRET_KEY`, `MPP_RECIPIENT`, or `DEMO_BATCH_ID` still holds its `.env.example` placeholder, or `CRON_SECRET` is `YOUR_RANDOM_SECRET`,
+- `MPP_SECRET_KEY`, `MPP_RECIPIENT`, or `DEMO_BATCH_IDS` still holds its `.env.example` placeholder, or `CRON_SECRET` is `YOUR_RANDOM_SECRET`,
 - the CLI is not logged in.
 
 After it links the project, it also stops with `result=blocked` when the project has any domain outside `*.vercel.app`. Adding a custom domain needs a separate, explicit decision. Do not do it from this skill.

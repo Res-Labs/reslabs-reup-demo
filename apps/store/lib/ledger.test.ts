@@ -24,7 +24,7 @@ const schema = `reup_ledger_${randomBytes(6).toString("hex")}`;
 Object.assign(process.env, {
   MPP_SECRET_KEY: "synthetic-store-secret-of-at-least-32-bytes",
   MPP_RECIPIENT: "0x00000000000000000000000000000000000000a1",
-  DEMO_BATCH_ID: "6f1d2c3b-4a59-4e68-9d7c-8b0a1f2e3d4c",
+  DEMO_BATCH_IDS: "6f1d2c3b-4a59-4e68-9d7c-8b0a1f2e3d4c",
   DEMO_SKU: "RL-DEMO-1",
   DEMO_PRICE: "1.00",
   RESLABS_LINK_ORIGIN: "http://localhost:4010",

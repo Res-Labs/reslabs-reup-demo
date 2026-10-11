@@ -2,11 +2,11 @@
 # Deploys apps/store to production on a Vercel project's *.vercel.app domain. Contract: ../SKILL.md.
 set -euo pipefail
 
-required_env=(MPP_SECRET_KEY MPP_RECIPIENT DEMO_BATCH_ID DEMO_SKU DEMO_PRICE RESLABS_LINK_ORIGIN
+required_env=(MPP_SECRET_KEY MPP_RECIPIENT DEMO_BATCH_IDS DEMO_SKU DEMO_PRICE RESLABS_LINK_ORIGIN
 	RESLABS_SESSION_URL TEMPO_RPC_URL DATABASE_URL CRON_SECRET)
 optional_env=(RESLABS_EDGE_KEY)
 url_env=(DATABASE_URL RESLABS_LINK_ORIGIN RESLABS_SESSION_URL TEMPO_RPC_URL)
-placeholder_env=(MPP_SECRET_KEY MPP_RECIPIENT DEMO_BATCH_ID)
+placeholder_env=(MPP_SECRET_KEY MPP_RECIPIENT DEMO_BATCH_IDS)
 
 blocked() {
 	echo "result=blocked reason=$*"

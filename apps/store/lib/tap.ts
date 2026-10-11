@@ -42,7 +42,11 @@ export function tapToken(link: string, linkOrigin: string): string | null {
   return url.searchParams.get("t") || null;
 }
 
-export function projectSession(status: number, body: string, demoBatchId: string): TapRead {
+export function projectSession(
+  status: number,
+  body: string,
+  demoBatchIds: readonly string[],
+): TapRead {
   if (status === 401) return { kind: "rejected", error: "link_expired" };
   if (status !== 200) return { kind: "rejected", error: "reslabs_unavailable" };
 
@@ -55,6 +59,7 @@ export function projectSession(status: number, body: string, demoBatchId: string
     }
   })();
   const tapId = decision?.tap?.id;
+  const batchId = decision?.batch?.id;
   const batchCode = decision?.batch?.batch_code;
   const productName = decision?.batch?.product_name;
   const vendorName = decision?.provenance_summary?.brand_name;
@@ -63,7 +68,8 @@ export function projectSession(status: number, body: string, demoBatchId: string
     decision?.variant !== "success" ||
     decision.verified !== true ||
     !isUuid(tapId) ||
-    decision.batch?.id !== demoBatchId ||
+    typeof batchId !== "string" ||
+    !demoBatchIds.includes(batchId) ||
     typeof batchCode !== "string" ||
     typeof productName !== "string" ||
     typeof vendorName !== "string" ||
@@ -73,7 +79,7 @@ export function projectSession(status: number, body: string, demoBatchId: string
   }
   return {
     kind: "verified",
-    tap: { tapId, batchId: demoBatchId, batchCode, productName, vendorName, coaUrl },
+    tap: { tapId, batchId, batchCode, productName, vendorName, coaUrl },
   };
 }
 
@@ -95,7 +101,7 @@ export async function readTap(link: string): Promise<TapRead> {
     if (response.status !== 200 && response.status !== 401) {
       console.warn(`res labs session answered HTTP ${response.status}`);
     }
-    return projectSession(response.status, await response.text(), config.demoBatchId);
+    return projectSession(response.status, await response.text(), config.demoBatchIds);
   } catch (error) {
     console.warn(`res labs session unreachable: ${error instanceof Error ? error.name : "error"}`);
     return { kind: "rejected", error: "reslabs_unavailable" };

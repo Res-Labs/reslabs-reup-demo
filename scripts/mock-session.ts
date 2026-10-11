@@ -1,9 +1,10 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-const demoBatchId = process.env.DEMO_BATCH_ID?.trim();
+// Taps mint for the first listed batch unless POST /mint names another.
+const demoBatchId = process.env.DEMO_BATCH_IDS?.split(",")[0]?.trim();
 if (!demoBatchId) {
-  console.error("mock-session: DEMO_BATCH_ID is required (set it in .env)");
+  console.error("mock-session: DEMO_BATCH_IDS is required (set it in .env)");
   process.exit(1);
 }
 const portRaw = process.env.MOCK_PORT ?? "4010";
