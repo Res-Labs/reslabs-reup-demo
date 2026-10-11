@@ -166,13 +166,14 @@ You need Node.js 22.12 or later, pnpm 12, Docker, and Claude Code. Run every com
 
 	```sh
 	pnpm --filter @reup/mcp build
-	claude mcp add --transport stdio \
-		--env AGENT_KEY=0xYOUR_AGENT_PRIVATE_KEY \
-		--env STORE_URL=http://localhost:3000 \
-		--env MPP_RECIPIENT=0xYOUR_RECIPIENT_ADDRESS \
-		reslabs-reup -- node "$PWD/apps/mcp/dist/index.js"
+	claude mcp add reslabs-reup --transport stdio --scope user \
+		-e AGENT_KEY=0xYOUR_AGENT_PRIVATE_KEY \
+		-e STORE_URL=http://localhost:3000 \
+		-e MPP_RECIPIENT=0xYOUR_RECIPIENT_ADDRESS \
+		-- node "$PWD/apps/mcp/dist/index.js"
 	```
 
+	The server name goes first because `-e` takes every following word as another variable. `--scope user` makes the server available wherever you start `claude`.
 8. Mint a share link. The reply is `{"link":"http://localhost:4010/v/p?t=..."}`.
 
 	```sh
