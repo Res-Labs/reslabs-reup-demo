@@ -98,7 +98,7 @@ The store reads only these fields and ignores the rest: `variant`, `verified`, `
 |---|---|---|
 | `bad_link` | 400 | The link is not a `/v/p` link with a `t` parameter on `RESLABS_LINK_ORIGIN`. |
 | `link_expired` | 410 | The session endpoint answered 401. |
-| `not_eligible` | 422 | The tap is not verified, its batch is not `DEMO_BATCH_ID`, or a required field is missing. |
+| `not_eligible` | 422 | The tap is not verified, its batch is not in `DEMO_BATCH_IDS`, or a required field is missing. |
 | `reslabs_unavailable` | 502 | The session endpoint answered another status, or did not answer within 5 seconds. |
 
 ## Set up Moderato wallets
@@ -195,7 +195,7 @@ To check real Res Labs taps, set these values in `.env` and restart the store:
 
 - `RESLABS_LINK_ORIGIN=https://verify.reslabs.ai`
 - `RESLABS_SESSION_URL=https://api.reslabs.ai/v/p/session`
-- `DEMO_BATCH_ID`, set to the vendor batch ID of the tagged product. The store accepts taps of that batch only.
+- `DEMO_BATCH_IDS`, set to the vendor batch IDs of the tagged products, separated by commas. The store accepts taps of those batches only.
 
 The buyer taps the product, copies the 5-minute share link from `verify.reslabs.ai`, and pastes it into the agent.
 
@@ -303,7 +303,7 @@ The store resolves `pending` attempts itself. It does so on the next reorder req
 |---|---|---|
 | `MPP_SECRET_KEY` | store | A random secret that signs MPP challenges. |
 | `MPP_RECIPIENT` | store, MCP server, `pnpm reconcile` | The Moderato address that receives payments. The MCP server pays no other address. |
-| `DEMO_BATCH_ID` | store, `pnpm mock` | The UUID of the vendor batch the store sells. The mock mints taps for this batch. |
+| `DEMO_BATCH_IDS` | store, `pnpm mock` | Comma-separated UUIDs of the vendor batches the store sells. The mock mints taps for the first one. |
 | `DEMO_SKU` | store | The SKU label on the product page and in verify results. |
 | `DEMO_PRICE` | store, `pnpm reconcile` | The reorder price in pathUSD, as a decimal with at most 6 fraction digits, such as `1.00`. The MCP server refuses any charge above 1.10 pathUSD. |
 | `RESLABS_LINK_ORIGIN` | store | The origin every share link must have. The mock uses `http://localhost:4010`, and Res Labs uses `https://verify.reslabs.ai`. |

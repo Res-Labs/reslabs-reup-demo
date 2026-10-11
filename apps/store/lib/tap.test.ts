@@ -4,6 +4,7 @@ import { projectSession, tapToken } from "./tap";
 
 const ORIGIN = "https://verify.reslabs.ai";
 const BATCH_ID = "6f1d2c3b-4a59-4e68-9d7c-8b0a1f2e3d4c";
+const SECOND_BATCH_ID = "3c9d8e7f-1a2b-4c3d-9e4f-5a6b7c8d9e0f";
 const TAP_ID = "0b8e4f2a-7c31-4d9e-a5b6-c7d8e9f0a1b2";
 
 const DECISION = {
@@ -42,7 +43,7 @@ describe("tapToken", () => {
 
 describe("projectSession", () => {
   it("returns only the projection of a verified decision for the demo batch", () => {
-    assert.deepEqual(projectSession(200, body({}), BATCH_ID), {
+    assert.deepEqual(projectSession(200, body({}), [BATCH_ID]), {
       kind: "verified",
       tap: {
         tapId: TAP_ID,
@@ -56,7 +57,7 @@ describe("projectSession", () => {
   });
 
   it("projects a COA without a lab URL as an empty coa_url", () => {
-    assert.deepEqual(projectSession(200, body({ coa: { lab_coa_url: null } }), BATCH_ID), {
+    assert.deepEqual(projectSession(200, body({ coa: { lab_coa_url: null } }), [BATCH_ID]), {
       kind: "verified",
       tap: {
         tapId: TAP_ID,
@@ -69,8 +70,14 @@ describe("projectSession", () => {
     });
   });
 
+  it("accepts a tap from any listed batch and keeps that batch's id", () => {
+    const decision = body({ batch: { ...DECISION.batch, id: SECOND_BATCH_ID } });
+    const read = projectSession(200, decision, [BATCH_ID, SECOND_BATCH_ID]);
+    assert.equal(read.kind === "verified" && read.tap.batchId, SECOND_BATCH_ID);
+  });
+
   it("maps 401 to link_expired", () => {
-    assert.deepEqual(projectSession(401, "", BATCH_ID), {
+    assert.deepEqual(projectSession(401, "", [BATCH_ID]), {
       kind: "rejected",
       error: "link_expired",
     });
@@ -78,7 +85,7 @@ describe("projectSession", () => {
 
   for (const status of [404, 429, 500, 503]) {
     it(`maps ${status} to reslabs_unavailable`, () => {
-      assert.deepEqual(projectSession(status, body({}), BATCH_ID), {
+      assert.deepEqual(projectSession(status, body({}), [BATCH_ID]), {
         kind: "rejected",
         error: "reslabs_unavailable",
       });
@@ -100,7 +107,7 @@ describe("projectSession", () => {
     ["a body that is not JSON", "<html>verified</html>"],
   ] as const) {
     it(`maps a 200 with ${name} to not_eligible`, () => {
-      assert.deepEqual(projectSession(200, text, BATCH_ID), {
+      assert.deepEqual(projectSession(200, text, [BATCH_ID, SECOND_BATCH_ID]), {
         kind: "rejected",
         error: "not_eligible",
       });

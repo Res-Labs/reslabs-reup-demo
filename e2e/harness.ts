@@ -234,7 +234,7 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
     STORE_DIST_DIR: path.relative(STORE_DIR, path.join(runDir, "next")),
     MPP_SECRET_KEY: keys.mppSecretKey,
     MPP_RECIPIENT: recipient,
-    DEMO_BATCH_ID: batchId,
+    DEMO_BATCH_IDS: batchId,
     DEMO_SKU: "DEMO-10MG",
     DEMO_PRICE: opts.demoPrice ?? "1.00",
     RESLABS_LINK_ORIGIN: mockUrl,
@@ -261,7 +261,7 @@ export async function startStack(opts: StackOptions = {}): Promise<Stack> {
     children.push(
       launch(TSX_BIN, ["scripts/mock-session.ts"], {
         cwd: REPO_ROOT,
-        env: { ...process.env, DEMO_BATCH_ID: batchId, MOCK_PORT: String(mockPort) },
+        env: { ...process.env, DEMO_BATCH_IDS: batchId, MOCK_PORT: String(mockPort) },
         log: log("mock"),
       }),
     );
