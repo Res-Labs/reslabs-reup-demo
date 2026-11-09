@@ -92,13 +92,13 @@ The agent's wallet has its own guards in `apps/mcp/src/payments.ts`:
 
 A tap verified by Res Labs yields a 5-minute share link on `https://verify.reslabs.ai/v/p?t=<token>`. The store reads that tap from one endpoint, `GET https://api.reslabs.ai/v/p/session?t=<token>`. The endpoint answers 200 with the tap's result while the link is live. It answers 401 for an unknown token or an expired link. It is not a documented public contract, so treat it as specific to this demo.
 
-The store reads only these fields and ignores the rest: `variant`, `verified`, `tap.id`, `batch.id`, `batch.batch_code`, `batch.product_name`, `provenance_summary.brand_name` and `coa.lab_coa_url`. It never logs, stores or returns the raw response. `/api/verify` maps the session result to these errors, and charges nothing for any of them:
+The store reads only these fields and ignores the rest: `variant`, `verified`, `tap.id`, `batch.id`, `batch.batch_code`, `batch.product_name`, `batch.status`, `provenance_summary.vendor_name` and `coa.lab_coa_url`. It never logs, stores or returns the raw response. The store accepts a tap from any batch registered with Res Labs while that batch is active. Active means a `batch.status` of `active`, `ready_to_ship` or `shipped`, the same set Res Labs uses for an activated batch. `/api/verify` maps the session result to these errors, and charges nothing for any of them:
 
 | Error | Status | Cause |
 |---|---|---|
 | `bad_link` | 400 | The link is not a `/v/p` link with a `t` parameter on `RESLABS_LINK_ORIGIN`. |
 | `link_expired` | 410 | The session endpoint answered 401. |
-| `not_eligible` | 422 | The tap is not verified, its batch is not in `DEMO_BATCH_IDS`, or a required field is missing. |
+| `not_eligible` | 422 | The tap is not a verified success, its batch status is not active, or a required field is missing. |
 | `reslabs_unavailable` | 502 | The session endpoint answered another status, or did not answer within 5 seconds. |
 
 ## Set up Moderato wallets
@@ -187,7 +187,7 @@ You need Node.js 22.12 or later, pnpm 12, Docker, and Claude Code. Run every com
 
 `reslabs_reorder` sets `_meta["anthropic/requiresUserInteraction"]`. With Claude Code 2.1.292 on Moderato, the tool showed a Yes or No approval prompt in the default interactive mode and under `--dangerously-skip-permissions`. The prompt has no option to stop asking. Headless `claude -p` can verify a tap but cannot reorder. Claude Code denied the reorder call with `MCPTool requires permission`, even with the tool in `--allowedTools` and permissions bypassed. Run the reorder step in an interactive `claude` session. Other permission modes are untested.
 
-Until every required store variable is valid, the store fails with `Missing or invalid store environment variables: <names>`. To see a rejected tap, mint a link for another batch with `curl -X POST localhost:4010/mint -d '{"batch_id":"another-batch"}'`. The store answers `not_eligible` and charges nothing. To start over with an empty ledger, stop the store, run `docker rm -f reup-postgres`, and start Postgres again.
+Until every required store variable is valid, the store fails with `Missing or invalid store environment variables: <names>`. To see a rejected tap, mint a link for a recalled batch with `curl -X POST localhost:4010/mint -d '{"batch_status":"recalled"}'`. The store answers `not_eligible` and charges nothing. To start over with an empty ledger, stop the store, run `docker rm -f reup-postgres`, and start Postgres again.
 
 ### Use a real tap instead of the mock
 
@@ -195,7 +195,6 @@ To check real Res Labs taps, set these values in `.env` and restart the store:
 
 - `RESLABS_LINK_ORIGIN=https://verify.reslabs.ai`
 - `RESLABS_SESSION_URL=https://api.reslabs.ai/v/p/session`
-- `DEMO_BATCH_IDS`, set to the vendor batch IDs of the tagged products, separated by commas. The store accepts taps of those batches only.
 
 The buyer taps the product, copies the 5-minute share link from `verify.reslabs.ai`, and pastes it into the agent.
 
@@ -303,7 +302,6 @@ The store resolves `pending` attempts itself. It does so on the next reorder req
 |---|---|---|
 | `MPP_SECRET_KEY` | store | A random secret that signs MPP challenges. |
 | `MPP_RECIPIENT` | store, MCP server, `pnpm reconcile` | The Moderato address that receives payments. The MCP server pays no other address. |
-| `DEMO_BATCH_IDS` | store, `pnpm mock` | Comma-separated UUIDs of the vendor batches the store sells. The mock mints taps for the first one. |
 | `DEMO_SKU` | store | The SKU label on the product page and in verify results. |
 | `DEMO_PRICE` | store, `pnpm reconcile` | The reorder price in pathUSD, as a decimal with at most 6 fraction digits, such as `1.00`. The MCP server refuses any charge above 1.10 pathUSD. |
 | `RESLABS_LINK_ORIGIN` | store | The origin every share link must have. The mock uses `http://localhost:4010`, and Res Labs uses `https://verify.reslabs.ai`. |
@@ -314,6 +312,7 @@ The store resolves `pending` attempts itself. It does so on the next reorder req
 | `RESLABS_EDGE_KEY` | store | Optional. A key Res Labs issues so its edge does not challenge the store's server, which runs on datacenter IPs. The store sends it as the `x-reslabs-reup-key` header on session reads. |
 | `STORE_DIST_DIR` | store | Optional. The Next.js build directory, relative to `apps/store`. The default is `.next`. |
 | `MOCK_PORT` | `pnpm mock` | Optional. The mock's port. The default is `4010`. |
+| `MOCK_BATCH_ID` | `pnpm mock` | Optional. The batch UUID the mock mints taps for. The default is `6f1d2c3b-4a59-4e68-9d7c-8b0a1f2e3d4c`. |
 | `AGENT_KEY` | MCP server | The private key of the agent's wallet. |
 | `STORE_URL` | MCP server | The Demo Store base URL, such as `http://localhost:3000`. |
 
