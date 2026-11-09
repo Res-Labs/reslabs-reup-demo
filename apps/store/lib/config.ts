@@ -6,7 +6,6 @@ export const PATH_USD_DECIMALS = 6;
 export interface Config {
   mppSecretKey: string;
   mppRecipient: Address;
-  demoBatchIds: readonly string[];
   demoSku: string;
   demoPrice: string;
   demoPriceUnits: bigint;
@@ -37,11 +36,6 @@ export function parseConfig(env: NodeJS.ProcessEnv): Config {
 
   const mppSecretKey = read("MPP_SECRET_KEY", (value) => value !== "");
   const mppRecipient = read("MPP_RECIPIENT", (value) => isAddress(value, { strict: false }));
-  const demoBatchIds = read("DEMO_BATCH_IDS", (value) =>
-    value.split(",").every((id) => isUuid(id.trim())),
-  )
-    .split(",")
-    .map((id) => id.trim());
   const demoSku = read("DEMO_SKU", (value) => value !== "");
   const demoPrice = read(
     "DEMO_PRICE",
@@ -62,7 +56,6 @@ export function parseConfig(env: NodeJS.ProcessEnv): Config {
   return {
     mppSecretKey,
     mppRecipient: getAddress(mppRecipient),
-    demoBatchIds,
     demoSku,
     demoPrice,
     demoPriceUnits: parseUnits(demoPrice, PATH_USD_DECIMALS),

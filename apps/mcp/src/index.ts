@@ -114,7 +114,7 @@ function verifyResult(result: StoreReply<z.infer<typeof Verification>>): CallToo
           );
         case "not_eligible":
           return reply(
-            "Res Labs did not confirm this tap for the demo product, so it cannot be reordered here.",
+            "Res Labs did not confirm this tap as a verified product from an active batch, so it cannot be reordered here. Nothing was paid.",
             true,
           );
         case "reslabs_unavailable":

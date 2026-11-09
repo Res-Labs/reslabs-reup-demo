@@ -1,12 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-// Taps mint for the first listed batch unless POST /mint names another.
-const demoBatchId = process.env.DEMO_BATCH_IDS?.split(",")[0]?.trim();
-if (!demoBatchId) {
-  console.error("mock-session: DEMO_BATCH_IDS is required (set it in .env)");
-  process.exit(1);
-}
+const defaultBatchId = process.env.MOCK_BATCH_ID?.trim() || "6f1d2c3b-4a59-4e68-9d7c-8b0a1f2e3d4c";
+const defaultBatchStatus = "shipped";
 const portRaw = process.env.MOCK_PORT ?? "4010";
 const port = Number(portRaw);
 if (!Number.isInteger(port) || port <= 0 || port > 65535) {
@@ -21,6 +17,7 @@ const MAX_BODY_BYTES = 4096;
 interface MintedLink {
   tapId: string;
   batchId: string;
+  batchStatus: string;
   mintedAt: number;
 }
 
@@ -31,8 +28,13 @@ function fixture(link: MintedLink) {
     variant: "success",
     verified: true,
     tap: { id: link.tapId },
-    batch: { id: link.batchId, batch_code: "DEMO-0001", product_name: "Demo Compound 10 mg" },
-    provenance_summary: { brand_name: "Demo Vendor" },
+    batch: {
+      id: link.batchId,
+      batch_code: "DEMO-0001",
+      product_name: "Demo Compound 10 mg",
+      status: link.batchStatus,
+    },
+    provenance_summary: { vendor_name: "Demo Vendor" },
     coa: { lab_coa_url: "https://example.com/coa/demo.pdf" },
   };
 }
@@ -65,10 +67,14 @@ async function readBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-type MintRequest = { ok: true; batchId: string } | { ok: false; error: string };
+type MintRequest =
+  | { ok: true; batchId: string; batchStatus: string }
+  | { ok: false; error: string };
 
 function parseMintBody(raw: string): MintRequest {
-  if (raw.trim() === "") return { ok: true, batchId: demoBatchId as string };
+  if (raw.trim() === "") {
+    return { ok: true, batchId: defaultBatchId, batchStatus: defaultBatchStatus };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -78,12 +84,15 @@ function parseMintBody(raw: string): MintRequest {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return { ok: false, error: "body must be a JSON object" };
   }
-  const batchId = (parsed as Record<string, unknown>).batch_id;
-  if (batchId === undefined) return { ok: true, batchId: demoBatchId as string };
+  const { batch_id: batchId = defaultBatchId, batch_status: batchStatus = defaultBatchStatus } =
+    parsed as Record<string, unknown>;
   if (typeof batchId !== "string" || batchId.trim() === "") {
     return { ok: false, error: "batch_id must be a non-empty string" };
   }
-  return { ok: true, batchId: batchId.trim() };
+  if (typeof batchStatus !== "string" || batchStatus.trim() === "") {
+    return { ok: false, error: "batch_status must be a non-empty string" };
+  }
+  return { ok: true, batchId: batchId.trim(), batchStatus: batchStatus.trim() };
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -99,7 +108,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const mint = parseMintBody(raw);
     if (!mint.ok) return sendJson(res, 400, { error: mint.error });
     const token = randomBytes(16).toString("base64url");
-    const link: MintedLink = { tapId: randomUUID(), batchId: mint.batchId, mintedAt: Date.now() };
+    const link: MintedLink = {
+      tapId: randomUUID(),
+      batchId: mint.batchId,
+      batchStatus: mint.batchStatus,
+      mintedAt: Date.now(),
+    };
     links.set(token, link);
     console.log(`minted tap ${link.tapId} for batch ${link.batchId}`);
     return sendJson(res, 200, { link: `${origin}/v/p?t=${token}` });
